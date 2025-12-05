@@ -1,4 +1,4 @@
-package com.pingpay
+package com.ping_pay
 
 import android.app.Application
 import com.facebook.react.PackageList

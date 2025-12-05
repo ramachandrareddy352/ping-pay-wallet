@@ -1,0 +1,14 @@
+<?xml version="1.0" standalone="no"?>
+<svg xmlns:xlink="http://www.w3.org/1999/xlink" width="128" height="128" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+  <title fill="#9d9fa4" style="fill: rgb(157, 159, 164);">swap-horizontal-circle</title>
+  <g id="Layer_2" data-name="Layer 2" fill="#9d9fa4" style="fill: rgb(157, 159, 164);">
+    <g id="invisible_box" data-name="invisible box" fill="#9d9fa4" style="fill: rgb(157, 159, 164);">
+      
+    </g>
+    <g id="icons_Q2" data-name="icons Q2" fill="#9d9fa4" style="fill: rgb(157, 159, 164);">
+      <path d="M36.4,28.6l-4.9-5a2.1,2.1,0,0,0-2.7-.2,1.9,1.9,0,0,0-.2,3L30.2,28H15a2,2,0,0,0,0,4H30.2l-1.6,1.6a1.9,1.9,0,0,0,.2,3,2.1,2.1,0,0,0,2.7-.2l4.9-5A1.9,1.9,0,0,0,36.4,28.6Z" fill="#9d9fa4" style="fill: rgb(157, 159, 164);"/>
+      <path d="M33,16H17.8l1.6-1.6a1.9,1.9,0,0,0-.2-3,2.1,2.1,0,0,0-2.7.2l-4.9,5a1.9,1.9,0,0,0,0,2.8l4.9,5a2.1,2.1,0,0,0,2.7.2,1.9,1.9,0,0,0,.2-3L17.8,20H33a2,2,0,0,0,0-4Z" fill="#9d9fa4" style="fill: rgb(157, 159, 164);"/>
+      <path d="M42,24A18,18,0,1,1,24,6,18.1,18.1,0,0,1,42,24m4,0A22,22,0,1,0,24,46,21.9,21.9,0,0,0,46,24Z" fill="#9d9fa4" style="fill: rgb(157, 159, 164);"/>
+    </g>
+  </g>
+</svg>

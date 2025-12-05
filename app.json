@@ -1,4 +1,5 @@
 {
-  "name": "PingPay",
-  "displayName": "PingPay"
+  "name": "Ping Pay",
+  "displayName": "Ping Pay",
+  "packageName": "ping_pay"
 }

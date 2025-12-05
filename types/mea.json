@@ -1,0 +1,538 @@
+{
+  "version": "0.1.0",
+  "name": "mea",
+  "constants": [
+    {"name": "DECIMAL_MANTISSA", "type": "u128", "value": "1_000_000"}
+  ],
+  "instructions": [
+    {
+      "name": "initializeMea",
+      "accounts": [
+        {"name": "meaMain", "isMut": true, "isSigner": false},
+        {"name": "payer", "isMut": true, "isSigner": true},
+        {"name": "systemProgram", "isMut": false, "isSigner": false}
+      ],
+      "args": [
+        {"name": "mainAdmin", "type": "publicKey"},
+        {"name": "triggerAdmin", "type": "publicKey"},
+        {"name": "merchantAdmin", "type": "publicKey"}
+      ]
+    },
+    {
+      "name": "updateMea",
+      "accounts": [
+        {"name": "meaMain", "isMut": true, "isSigner": false},
+        {"name": "meaAdmin", "isMut": true, "isSigner": true},
+        {"name": "systemProgram", "isMut": false, "isSigner": false}
+      ],
+      "args": [
+        {"name": "mainAdmin", "type": "publicKey"},
+        {"name": "triggerAdmin", "type": "publicKey"},
+        {"name": "merchantAdmin", "type": "publicKey"}
+      ]
+    },
+    {
+      "name": "createMerchant",
+      "accounts": [
+        {"name": "meaMain", "isMut": false, "isSigner": false},
+        {"name": "owner", "isMut": true, "isSigner": true},
+        {"name": "merchantAdmin", "isMut": true, "isSigner": true},
+        {"name": "merchant", "isMut": true, "isSigner": false},
+        {"name": "meaToken", "isMut": false, "isSigner": false},
+        {"name": "usdtToken", "isMut": false, "isSigner": false},
+        {"name": "merchantMeaAccount", "isMut": true, "isSigner": false},
+        {"name": "merchantUsdtAccount", "isMut": true, "isSigner": false},
+        {"name": "tokenProgram", "isMut": false, "isSigner": false},
+        {"name": "token2022Program", "isMut": false, "isSigner": false},
+        {"name": "associatedTokenProgram", "isMut": false, "isSigner": false},
+        {"name": "systemProgram", "isMut": false, "isSigner": false}
+      ],
+      "args": [{"name": "shopId", "type": "u64"}]
+    },
+    {
+      "name": "updateMerchantBlacklist",
+      "accounts": [
+        {"name": "meaMain", "isMut": false, "isSigner": false},
+        {"name": "meaAdmin", "isMut": true, "isSigner": true},
+        {"name": "merchant", "isMut": true, "isSigner": false}
+      ],
+      "args": [
+        {"name": "merchantKey", "type": "publicKey"},
+        {"name": "shopId", "type": "u64"},
+        {"name": "isBlacklist", "type": "bool"}
+      ]
+    },
+    {
+      "name": "initializeOracle",
+      "accounts": [
+        {"name": "meaMain", "isMut": false, "isSigner": false},
+        {"name": "oracle", "isMut": true, "isSigner": false},
+        {"name": "meaAdmin", "isMut": true, "isSigner": true},
+        {"name": "systemProgram", "isMut": false, "isSigner": false}
+      ],
+      "args": [
+        {"name": "staleTime", "type": "u32"},
+        {"name": "oracleAdmin", "type": "publicKey"},
+        {"name": "isPythData", "type": "bool"},
+        {"name": "initialPrice", "type": {"option": "u64"}},
+        {"name": "meaPriceFeed", "type": {"option": "publicKey"}}
+      ]
+    },
+    {
+      "name": "updateOracleAdmin",
+      "accounts": [
+        {"name": "meaMain", "isMut": false, "isSigner": false},
+        {"name": "oracle", "isMut": true, "isSigner": false},
+        {"name": "meaAdmin", "isMut": true, "isSigner": true}
+      ],
+      "args": [{"name": "newAdmin", "type": "publicKey"}]
+    },
+    {
+      "name": "updateOracleData",
+      "accounts": [
+        {"name": "oracle", "isMut": true, "isSigner": false},
+        {"name": "oracleAdmin", "isMut": true, "isSigner": true}
+      ],
+      "args": [
+        {"name": "isPythData", "type": "bool"},
+        {"name": "staleTime", "type": "u32"}
+      ]
+    },
+    {
+      "name": "updatePythPriceFeed",
+      "accounts": [
+        {"name": "oracle", "isMut": true, "isSigner": false},
+        {"name": "oracleAdmin", "isMut": true, "isSigner": true}
+      ],
+      "args": [{"name": "meaPriceFeed", "type": "publicKey"}]
+    },
+    {
+      "name": "updateOraclePrice",
+      "accounts": [
+        {"name": "oracle", "isMut": true, "isSigner": false},
+        {"name": "oracleAdmin", "isMut": true, "isSigner": true}
+      ],
+      "args": [{"name": "updatedPrice", "type": "u64"}]
+    },
+    {
+      "name": "initializeVault",
+      "accounts": [
+        {"name": "meaMain", "isMut": false, "isSigner": false},
+        {"name": "vault", "isMut": true, "isSigner": false},
+        {"name": "meaAdmin", "isMut": true, "isSigner": true},
+        {"name": "meaToken", "isMut": false, "isSigner": false},
+        {"name": "usdtToken", "isMut": false, "isSigner": false},
+        {"name": "vaultMeaAccount", "isMut": true, "isSigner": false},
+        {"name": "vaultUsdtAccount", "isMut": true, "isSigner": false},
+        {"name": "tokenProgram", "isMut": false, "isSigner": false},
+        {"name": "token2022Program", "isMut": false, "isSigner": false},
+        {"name": "associatedTokenProgram", "isMut": false, "isSigner": false},
+        {"name": "systemProgram", "isMut": false, "isSigner": false}
+      ],
+      "args": [
+        {"name": "triggerFeeInMea", "type": "u64"},
+        {"name": "refundFee", "type": "u16"},
+        {"name": "swapFee", "type": "u16"},
+        {"name": "platformFee", "type": "u16"},
+        {"name": "vaultAdmin", "type": "publicKey"}
+      ]
+    },
+    {
+      "name": "updateVaultAdmin",
+      "accounts": [
+        {"name": "meaMain", "isMut": false, "isSigner": false},
+        {"name": "vault", "isMut": true, "isSigner": false},
+        {"name": "meaAdmin", "isMut": true, "isSigner": true}
+      ],
+      "args": [{"name": "newAdmin", "type": "publicKey"}]
+    },
+    {
+      "name": "updateVaultWithdraw",
+      "accounts": [
+        {"name": "meaMain", "isMut": false, "isSigner": false},
+        {"name": "vault", "isMut": true, "isSigner": false},
+        {"name": "meaAdmin", "isMut": true, "isSigner": true}
+      ],
+      "args": [{"name": "isWithdrawPaused", "type": "bool"}]
+    },
+    {
+      "name": "updateVaultFees",
+      "accounts": [
+        {"name": "vault", "isMut": true, "isSigner": false},
+        {"name": "vaultAdmin", "isMut": true, "isSigner": true}
+      ],
+      "args": [
+        {"name": "updatedTriggerFeeInMea", "type": "u64"},
+        {"name": "updatedRefundFee", "type": "u16"},
+        {"name": "updatedSwapFee", "type": "u16"},
+        {"name": "updatedPlatformFee", "type": "u16"}
+      ]
+    },
+    {
+      "name": "processPayment",
+      "accounts": [
+        {"name": "user", "isMut": true, "isSigner": true},
+        {"name": "merchant", "isMut": true, "isSigner": false},
+        {"name": "oracle", "isMut": false, "isSigner": false},
+        {"name": "vault", "isMut": true, "isSigner": false},
+        {"name": "meaToken", "isMut": false, "isSigner": false},
+        {"name": "usdtToken", "isMut": false, "isSigner": false},
+        {"name": "userMeaAccount", "isMut": true, "isSigner": false},
+        {"name": "merchantMeaAccount", "isMut": true, "isSigner": false},
+        {"name": "merchantUsdtAccount", "isMut": true, "isSigner": false},
+        {"name": "vaultMeaAccount", "isMut": true, "isSigner": false},
+        {"name": "vaultUsdtAccount", "isMut": true, "isSigner": false},
+        {"name": "pythPriceFeed", "isMut": false, "isSigner": false},
+        {"name": "tokenProgram", "isMut": false, "isSigner": false},
+        {"name": "token2022Program", "isMut": false, "isSigner": false},
+        {"name": "associatedTokenProgram", "isMut": false, "isSigner": false},
+        {"name": "systemProgram", "isMut": false, "isSigner": false}
+      ],
+      "args": [
+        {"name": "paymentUid", "type": "string"},
+        {"name": "merchantKey", "type": "publicKey"},
+        {"name": "shopId", "type": "u64"},
+        {"name": "meaAmount", "type": "u64"},
+        {"name": "usdtAmount", "type": "u64"},
+        {"name": "isInstantSettle", "type": "bool"},
+        {"name": "slippage", "type": "u64"}
+      ]
+    },
+    {
+      "name": "manualWithdraw",
+      "accounts": [
+        {"name": "owner", "isMut": true, "isSigner": true},
+        {"name": "merchant", "isMut": true, "isSigner": false},
+        {"name": "vault", "isMut": true, "isSigner": false},
+        {"name": "meaToken", "isMut": false, "isSigner": false},
+        {"name": "usdtToken", "isMut": false, "isSigner": false},
+        {"name": "merchantMeaAccount", "isMut": true, "isSigner": false},
+        {"name": "merchantUsdtAccount", "isMut": true, "isSigner": false},
+        {"name": "vaultMeaAccount", "isMut": true, "isSigner": false},
+        {"name": "vaultUsdtAccount", "isMut": true, "isSigner": false},
+        {"name": "receiverMeaAccount", "isMut": true, "isSigner": false},
+        {"name": "receiverUsdtAccount", "isMut": true, "isSigner": false},
+        {"name": "tokenProgram", "isMut": false, "isSigner": false},
+        {"name": "token2022Program", "isMut": false, "isSigner": false},
+        {"name": "associatedTokenProgram", "isMut": false, "isSigner": false},
+        {"name": "systemProgram", "isMut": false, "isSigner": false}
+      ],
+      "args": [
+        {"name": "shopId", "type": "u64"},
+        {"name": "meaAmount", "type": "u64"},
+        {"name": "usdtAmount", "type": "u64"}
+      ]
+    },
+    {
+      "name": "triggerWithdraw",
+      "accounts": [
+        {"name": "meaMain", "isMut": false, "isSigner": false},
+        {"name": "triggerAdmin", "isMut": true, "isSigner": true},
+        {"name": "merchant", "isMut": true, "isSigner": false},
+        {"name": "vault", "isMut": true, "isSigner": false},
+        {"name": "meaToken", "isMut": false, "isSigner": false},
+        {"name": "usdtToken", "isMut": false, "isSigner": false},
+        {"name": "merchantMeaAccount", "isMut": true, "isSigner": false},
+        {"name": "merchantUsdtAccount", "isMut": true, "isSigner": false},
+        {"name": "vaultMeaAccount", "isMut": true, "isSigner": false},
+        {"name": "vaultUsdtAccount", "isMut": true, "isSigner": false},
+        {"name": "tokenProgram", "isMut": false, "isSigner": false},
+        {"name": "token2022Program", "isMut": false, "isSigner": false},
+        {"name": "associatedTokenProgram", "isMut": false, "isSigner": false},
+        {"name": "systemProgram", "isMut": false, "isSigner": false}
+      ],
+      "args": [
+        {"name": "merchantKey", "type": "publicKey"},
+        {"name": "shopId", "type": "u64"},
+        {"name": "meaAmount", "type": "u64"},
+        {"name": "usdtAmount", "type": "u64"},
+        {"name": "balanceToReduce", "type": "u64"},
+        {"name": "feesToAdd", "type": "u64"}
+      ]
+    },
+    {
+      "name": "shiftFunds",
+      "accounts": [
+        {"name": "owner", "isMut": true, "isSigner": true},
+        {"name": "merchant", "isMut": true, "isSigner": false},
+        {"name": "oracle", "isMut": false, "isSigner": false},
+        {"name": "vault", "isMut": true, "isSigner": false},
+        {"name": "pythPriceFeed", "isMut": false, "isSigner": false},
+        {"name": "meaToken", "isMut": false, "isSigner": false},
+        {"name": "usdtToken", "isMut": false, "isSigner": false},
+        {"name": "merchantMeaAccount", "isMut": true, "isSigner": false},
+        {"name": "merchantUsdtAccount", "isMut": true, "isSigner": false},
+        {"name": "vaultMeaAccount", "isMut": true, "isSigner": false},
+        {"name": "vaultUsdtAccount", "isMut": true, "isSigner": false},
+        {"name": "tokenProgram", "isMut": false, "isSigner": false},
+        {"name": "token2022Program", "isMut": false, "isSigner": false},
+        {"name": "associatedTokenProgram", "isMut": false, "isSigner": false},
+        {"name": "systemProgram", "isMut": false, "isSigner": false}
+      ],
+      "args": [
+        {"name": "shopId", "type": "u64"},
+        {"name": "meaAmount", "type": "u64"},
+        {"name": "tokenType", "type": {"defined": "TokenType"}}
+      ]
+    },
+    {
+      "name": "completeRefund",
+      "accounts": [
+        {"name": "owner", "isMut": true, "isSigner": true},
+        {"name": "user", "isMut": false, "isSigner": false},
+        {"name": "merchant", "isMut": false, "isSigner": false},
+        {"name": "oracle", "isMut": false, "isSigner": false},
+        {"name": "meaToken", "isMut": false, "isSigner": false},
+        {"name": "userMeaAccount", "isMut": true, "isSigner": false},
+        {"name": "merchantMeaAccount", "isMut": true, "isSigner": false},
+        {"name": "pythPriceFeed", "isMut": false, "isSigner": false},
+        {"name": "tokenProgram", "isMut": false, "isSigner": false},
+        {"name": "token2022Program", "isMut": false, "isSigner": false},
+        {"name": "associatedTokenProgram", "isMut": false, "isSigner": false},
+        {"name": "systemProgram", "isMut": false, "isSigner": false}
+      ],
+      "args": [
+        {"name": "paymentUid", "type": "string"},
+        {"name": "shopId", "type": "u64"},
+        {"name": "usdtAmount", "type": "u64"},
+        {"name": "expectedMea", "type": "u64"},
+        {"name": "slippage", "type": "u64"}
+      ]
+    },
+    {
+      "name": "withdrawAdminFee",
+      "accounts": [
+        {"name": "meaMain", "isMut": false, "isSigner": false},
+        {"name": "mainAdmin", "isMut": true, "isSigner": true},
+        {"name": "vault", "isMut": false, "isSigner": false},
+        {"name": "meaToken", "isMut": false, "isSigner": false},
+        {"name": "usdtToken", "isMut": false, "isSigner": false},
+        {"name": "receiverMaeAccount", "isMut": true, "isSigner": false},
+        {"name": "receiverUsdtAccount", "isMut": true, "isSigner": false},
+        {"name": "vaultMeaAccount", "isMut": true, "isSigner": false},
+        {"name": "vaultUsdtAccount", "isMut": true, "isSigner": false},
+        {"name": "tokenProgram", "isMut": false, "isSigner": false},
+        {"name": "token2022Program", "isMut": false, "isSigner": false},
+        {"name": "associatedTokenProgram", "isMut": false, "isSigner": false},
+        {"name": "systemProgram", "isMut": false, "isSigner": false}
+      ],
+      "args": [
+        {"name": "meaAmount", "type": "u64"},
+        {"name": "usdtAmount", "type": "u64"}
+      ]
+    },
+    {
+      "name": "rebalanceVault",
+      "accounts": [
+        {"name": "meaMain", "isMut": false, "isSigner": false},
+        {"name": "mainAdmin", "isMut": true, "isSigner": true},
+        {"name": "vault", "isMut": false, "isSigner": false},
+        {"name": "meaToken", "isMut": false, "isSigner": false},
+        {"name": "usdtToken", "isMut": false, "isSigner": false},
+        {"name": "receiverMaeAccount", "isMut": true, "isSigner": false},
+        {"name": "receiverUsdtAccount", "isMut": true, "isSigner": false},
+        {"name": "vaultMeaAccount", "isMut": true, "isSigner": false},
+        {"name": "vaultUsdtAccount", "isMut": true, "isSigner": false},
+        {"name": "tokenProgram", "isMut": false, "isSigner": false},
+        {"name": "token2022Program", "isMut": false, "isSigner": false},
+        {"name": "associatedTokenProgram", "isMut": false, "isSigner": false},
+        {"name": "systemProgram", "isMut": false, "isSigner": false}
+      ],
+      "args": [
+        {"name": "usdtAmount", "type": "u64"},
+        {"name": "meaAmount", "type": "u64"}
+      ]
+    },
+    {
+      "name": "shiftFundsExternal",
+      "accounts": [
+        {"name": "meaMain", "isMut": false, "isSigner": false},
+        {"name": "merchantAdmin", "isMut": true, "isSigner": true},
+        {"name": "owner", "isMut": true, "isSigner": true},
+        {"name": "merchant", "isMut": true, "isSigner": false},
+        {"name": "vault", "isMut": true, "isSigner": false},
+        {"name": "meaToken", "isMut": false, "isSigner": false},
+        {"name": "receiverMeaAccount", "isMut": true, "isSigner": false},
+        {"name": "vaultMeaAccount", "isMut": true, "isSigner": false},
+        {"name": "tokenProgram", "isMut": false, "isSigner": false},
+        {"name": "token2022Program", "isMut": false, "isSigner": false},
+        {"name": "associatedTokenProgram", "isMut": false, "isSigner": false},
+        {"name": "systemProgram", "isMut": false, "isSigner": false}
+      ],
+      "args": [
+        {"name": "shopId", "type": "u64"},
+        {"name": "meaAmount", "type": "u64"}
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Oracle",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {"name": "oracleAdmin", "type": "publicKey"},
+          {"name": "staleTime", "type": "u32"},
+          {"name": "isPythData", "type": "bool"},
+          {"name": "meaPrice", "type": "u64"},
+          {"name": "lastUpdated", "type": "i64"},
+          {"name": "pythMeaPriceFeed", "type": "publicKey"}
+        ]
+      }
+    },
+    {
+      "name": "Vault",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {"name": "vaultAdmin", "type": "publicKey"},
+          {"name": "vaultMeaAccount", "type": "publicKey"},
+          {"name": "vaultUsdtAccount", "type": "publicKey"},
+          {"name": "totalFeesInMea", "type": "u64"},
+          {"name": "totalFeesInUsdt", "type": "u64"},
+          {"name": "triggerFeeInUsdt", "type": "u64"},
+          {"name": "refundFeeInMea", "type": "u16"},
+          {"name": "swapFee", "type": "u16"},
+          {"name": "platformFeeInMea", "type": "u16"},
+          {"name": "isWithdrawPaused", "type": "bool"}
+        ]
+      }
+    },
+    {
+      "name": "MeaMain",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {"name": "mainAdmin", "type": "publicKey"},
+          {"name": "triggerAdmin", "type": "publicKey"},
+          {"name": "merchantAdmin", "type": "publicKey"},
+          {"name": "isInitialized", "type": "bool"}
+        ]
+      }
+    },
+    {
+      "name": "Merchant",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {"name": "owner", "type": "publicKey"},
+          {"name": "shopId", "type": "u64"},
+          {"name": "merchantMeaAccount", "type": "publicKey"},
+          {"name": "merchantUsdtAccount", "type": "publicKey"},
+          {"name": "balance", "type": "u64"},
+          {"name": "isCreated", "type": "bool"},
+          {"name": "isBlacklist", "type": "bool"}
+        ]
+      }
+    }
+  ],
+  "types": [
+    {
+      "name": "SwapDirection",
+      "type": {
+        "kind": "enum",
+        "variants": [{"name": "MeaToUsdt"}, {"name": "UsdtToMea"}]
+      }
+    },
+    {
+      "name": "TokenType",
+      "type": {"kind": "enum", "variants": [{"name": "Mea"}, {"name": "Usdt"}]}
+    },
+    {
+      "name": "WithdrawalMethod",
+      "type": {
+        "kind": "enum",
+        "variants": [{"name": "InstantSettle"}, {"name": "TriggerSettle"}]
+      }
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "InvalidZeroStaleTime",
+      "msg": "Stale time is set to zero"
+    },
+    {
+      "code": 6001,
+      "name": "InvalidPythFeed",
+      "msg": "Invalid Price feed address"
+    },
+    {"code": 6002, "name": "InvalidZeroPrice", "msg": "Invalid ZERO price"},
+    {"code": 6003, "name": "InvalidZeroAmount", "msg": "Invalid ZERO amount"},
+    {
+      "code": 6004,
+      "name": "ArithmeticOverflow",
+      "msg": "Arithmetic overflow error"
+    },
+    {"code": 6005, "name": "InvalidAdmin", "msg": "Invalid admin call"},
+    {
+      "code": 6006,
+      "name": "MeaNotInitialized",
+      "msg": "Program was not initialized"
+    },
+    {
+      "code": 6007,
+      "name": "MeaAlreadyInitialized",
+      "msg": "Program is already initialized"
+    },
+    {"code": 6008, "name": "InvalidFee", "msg": "Invalid Fee amount"},
+    {
+      "code": 6009,
+      "name": "MerchantNotCreated",
+      "msg": "Merchant is not found"
+    },
+    {
+      "code": 6010,
+      "name": "InvalidTriggerPrice",
+      "msg": "Invalid Trigger price"
+    },
+    {"code": 6011, "name": "StaleTimeExceed", "msg": "Stale time is exceed"},
+    {
+      "code": 6012,
+      "name": "MerchantBlaklisted",
+      "msg": "Current Merchant is Blacklisted"
+    },
+    {
+      "code": 6013,
+      "name": "ExceedAmountFees",
+      "msg": "Fees is exceed the amount"
+    },
+    {
+      "code": 6014,
+      "name": "MerchantAlreadyInitialized",
+      "msg": "Merchant already initialized"
+    },
+    {"code": 6015, "name": "InvalidStaleTime", "msg": "Stale time is Exceed"},
+    {
+      "code": 6016,
+      "name": "InsufficientMerchantBalance",
+      "msg": "Insufficient balance in Merchant account"
+    },
+    {
+      "code": 6017,
+      "name": "WithdrawPaused",
+      "msg": "Withdraw funds are paused"
+    },
+    {
+      "code": 6018,
+      "name": "InsufficientVaultBalance",
+      "msg": "Insufficient balance in Vault"
+    },
+    {
+      "code": 6019,
+      "name": "PriceNotReached",
+      "msg": "Trigger price not reached"
+    },
+    {
+      "code": 6020,
+      "name": "MinTriggetAmountNotMet",
+      "msg": "Minimum Trigger amount not reached"
+    },
+    {
+      "code": 6021,
+      "name": "InsufficientTriggerFee",
+      "msg": "Insufficient Trigger fee balance"
+    },
+    {"code": 6022, "name": "SlippageExceeded", "msg": "Slippage exceeded"}
+  ]
+}
