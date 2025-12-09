@@ -18,33 +18,19 @@ export const useMandatoryUpdate = () => {
   const [isMandatory, setIsMandatory] = useState(false);
   const [updateMessage, setUpdateMessage] = useState('');
   const [loading, setLoading] = useState(true);
-  const [versionInfo, setVersionInfo] = useState<VersionInfo>({
-    minVersion: '2.0',
-    message: 'It is mandatatory to update',
-    playStoreUrl: 'Play store url',
-    appleStoreUrl: 'apple store url',
-  });
+  const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
 
   useEffect(() => {
     const checkUpdate = async () => {
       try {
-        // 1. Get current version
-        const currentVersion = DeviceInfo.getVersion(); // e.g. "0.0.1"
-        console.log('currentVersion: ', currentVersion);
+        const currentVersion = DeviceInfo.getVersion();
 
-        // 2. Fetch version info from your API
         const { data } = await axios.get<{
           success: boolean;
           body?: VersionInfo;
         }>('https://api-platform.pingpay.info/public/open/update-info');
 
         const info = data.body;
-        // const info = {
-        //   minVersion: '1.1',
-        //   message: 'It is mandatatory to update',
-        //   playStoreUrl: 'Play store url',
-        //   appleStoreUrl: 'apple store url',
-        // };
         if (!info) {
           setLoading(false);
           return;
@@ -53,28 +39,10 @@ export const useMandatoryUpdate = () => {
         setVersionInfo(info);
         setUpdateMessage(info.message);
 
-        // 3. Compare versions
         if (isVersionOlder(currentVersion, info.minVersion)) {
+          // ❗ Instead of auto updating, just mark mandatory=true
           setIsMandatory(true);
-          // Immediately start update for Android
-          if (Platform.OS === 'android') {
-            const inAppUpdates = new InAppUpdates(false);
-            const updateOptions: StartUpdateOptions = {
-              updateType: IAUUpdateKind.IMMEDIATE, // blocks the app until update done
-            };
-            try {
-              await inAppUpdates.startUpdate(updateOptions);
-            } catch (err) {
-              console.log('In-app update failed', err);
-              // fallback: open Play Store manually
-              Linking.openURL(info.playStoreUrl);
-            }
-          } else {
-            // On iOS, open App Store link
-            Linking.openURL(info.appleStoreUrl);
-          }
         } else {
-          // Version is okay
           setIsMandatory(false);
         }
       } catch (e) {
@@ -89,6 +57,7 @@ export const useMandatoryUpdate = () => {
 
   return { isMandatory, updateMessage, loading, versionInfo };
 };
+
 
 // Compare semantic versions (simple)
 function isVersionOlder(current: string, min: string): boolean {

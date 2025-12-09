@@ -133,7 +133,7 @@ const AccountNameScreen = ({ route, navigation }: Props) => {
 
       {/* Save Button */}
       <View
-        className="absolute bottom-0 left-0 right-0 px-4"
+        className="absolute bottom-4 left-0 right-0 px-4"
         style={{
           marginBottom: isKeyboardVisible ? 20 : 0,
         }}

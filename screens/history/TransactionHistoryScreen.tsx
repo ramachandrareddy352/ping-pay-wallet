@@ -265,9 +265,9 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
   const statusColor = (status?: string) => {
     const s = (status || '').toLowerCase();
     if (s.includes('completed') || s.includes('success')) return '#10B981';
-    if (s.includes('pending')) return '#F59E0B';
+    if (s.includes('pending') || s.includes('processing')) return '#F59E0B';
     if (s.includes('failed')) return '#EF4444';
-    return '#6B7280';
+    return '#7C88FF';
   };
 
   // ===========================================
@@ -362,12 +362,18 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
 
             {/* Payment ID + Refund button */}
             <View className="flex-row items-center justify-between mt-3">
-              <Text
-                className="text-white font-normal text-sm"
-                numberOfLines={1}
+              <TouchableOpacity
+                onPress={() => copyToClipboard(item._id)}
+                className="flex-row items-center"
               >
-                Payment ID: {item._id}
-              </Text>
+                <Text
+                  className="text-white font-normal text-sm"
+                  numberOfLines={1}
+                >
+                  Payment ID: {item._id}{' '}
+                </Text>
+                <CopyIcon width={14} height={14} />
+              </TouchableOpacity>
             </View>
           </View>
         </View>
@@ -444,7 +450,7 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
 
           <View className="bg-white p-4 rounded-xl">
             <QRCode
-              value={`refund:${refundPaymentId}`}
+              value={`${refundPaymentId}`}
               size={220}
               color="black"
               backgroundColor="white"
