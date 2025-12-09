@@ -223,6 +223,7 @@ export default function RewardsScreen({ navigation }: Props) {
           { headers },
         );
         const payments = rewardData.body?.payments || [];
+
         setRewardsList(payments);
         setRewardTotal(rewardData.body?.pagination?.total || 0);
         // build per-item remaining ms map
@@ -641,6 +642,8 @@ export default function RewardsScreen({ navigation }: Props) {
               const pad = (n: number) => n.toString().padStart(2, '0');
               const unlocked = remainingMs <= 0;
 
+              console.log(item.refunds.length > 0);
+
               return (
                 <View
                   key={i}
@@ -686,17 +689,29 @@ export default function RewardsScreen({ navigation }: Props) {
                   />
 
                   {/* COUNTDOWN SECTION */}
+                  {/* COUNTDOWN / REFUND SECTION */}
                   <View style={{ width: '100%', marginTop: 1 }}>
-                    {unlocked ? (
+                    {item.refunds.length > 0 ? (
                       <Text
                         style={{
-                          color: '#9AE6B4',
-                          fontSize: 12,
+                          color: '#EF4444',
+                          fontSize: 14,
                           fontWeight: '700',
                           textAlign: 'center',
                         }}
                       >
-                        🔓 Rewards Unlocked
+                        ⛔ Reward Refunded
+                      </Text>
+                    ) : unlocked ? (
+                      <Text
+                        style={{
+                          color: '#9AE6B4',
+                          fontSize: 14,
+                          fontWeight: '700',
+                          textAlign: 'center',
+                        }}
+                      >
+                        ⭐ Rewards Unlocked
                       </Text>
                     ) : (
                       <>
@@ -712,7 +727,6 @@ export default function RewardsScreen({ navigation }: Props) {
                           Rewards will Unlock In
                         </Text>
 
-                        {/* BOX DISPLAY */}
                         <View
                           style={{
                             flexDirection: 'row',
