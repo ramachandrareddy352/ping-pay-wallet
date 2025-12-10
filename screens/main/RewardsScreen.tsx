@@ -642,8 +642,6 @@ export default function RewardsScreen({ navigation }: Props) {
               const pad = (n: number) => n.toString().padStart(2, '0');
               const unlocked = remainingMs <= 0;
 
-              console.log(item.refunds.length > 0);
-
               return (
                 <View
                   key={i}
@@ -691,7 +689,7 @@ export default function RewardsScreen({ navigation }: Props) {
                   {/* COUNTDOWN SECTION */}
                   {/* COUNTDOWN / REFUND SECTION */}
                   <View style={{ width: '100%', marginTop: 1 }}>
-                    {item.refunds.length > 0 ? (
+                    {item.rewardStatus === 'cancelled' ? (
                       <Text
                         style={{
                           color: '#EF4444',

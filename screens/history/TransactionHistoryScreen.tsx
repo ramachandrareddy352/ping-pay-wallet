@@ -19,18 +19,17 @@ import NetInfo from '@react-native-community/netinfo';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Clipboard from '@react-native-clipboard/clipboard';
-
 import nacl from 'tweetnacl';
 import bs58 from 'bs58';
 
 import { RootStackParamList } from '../../types/navigation';
 import { loadWallet, WalletAccount, WalletData } from '../../utils/storage';
 import BottomNavBar from '../../components/BottomNavBar';
-
 import UsernameFrame from '../../assets/images/user-logo.png';
 import Offline from '../../assets/icons/offline.svg';
 import OpenLinkIcon from '../../assets/icons/open-link.svg';
 import CopyIcon from '../../assets/icons/Copy-icon.svg';
+
 import QRCode from 'react-native-qrcode-svg';
 import { useIsFocused } from '@react-navigation/native';
 
@@ -42,11 +41,12 @@ type Props = NativeStackScreenProps<RootStackParamList, 'TransactionHistory'>;
 
 export enum PaymentStatus {
   All = 'All',
+  Completed = 'completed',
+  Complete_Refunded = 'refunded',
+  Partial_Refund = 'partial_refund',
   Pending = 'pending',
   Processing = 'processing',
-  Completed = 'completed',
   Failed = 'failed',
-  Refunded = 'refunded',
 }
 
 export enum PaymentType {
@@ -61,15 +61,12 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
   const [wallet, setWallet] = useState<WalletData | null>(null);
   const [account, setAccount] = useState<WalletAccount | null>(null);
   const [bearerToken, setBearerToken] = useState<string | null>(null);
-
   const [loading, setLoading] = useState(true);
   const [listLoading, setListLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-
   const [transactions, setTransactions] = useState<any[]>([]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
-
   const [selectedTx, setSelectedTx] = useState<any>(null);
   const [modalVisible, setModalVisible] = useState(false);
 
@@ -84,11 +81,10 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
   const [selectedType, setSelectedType] = useState<PaymentType>(
     PaymentType.All,
   );
-
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
   const [typeDropdownOpen, setTypeDropdownOpen] = useState(false);
-  const isFocused = useIsFocused();
 
+  const isFocused = useIsFocused();
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -137,11 +133,9 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
     if (!account) return;
     try {
       if (showLoading) setLoading(true);
-
       const PUBLIC_KEY = account.publicKey;
       const PRIVATE_KEY_B58 = account.secretKey;
       const secretKey = bs58.decode(PRIVATE_KEY_B58);
-
       const initRes = await fetch(`${BASE_URL}/user/a/initiate-sign-in`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -150,11 +144,9 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
       const initJson = await initRes.json();
       const challenge = initJson?.body?.message;
       if (!challenge) throw new Error('Challenge missing');
-
       const msgBytes = new TextEncoder().encode(challenge);
       const signature = nacl.sign.detached(msgBytes, secretKey);
       const sig58 = bs58.encode(signature);
-
       const authRes = await fetch(`${BASE_URL}/user/a/sign-in`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -163,9 +155,7 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
       const authJson = await authRes.json();
       const token = authJson?.body?.token;
       if (!token) throw new Error('Token missing');
-
       setBearerToken(token);
-
       await fetchTransactions(1, token);
     } catch (err: any) {
       console.log('Auth error:', err);
@@ -174,11 +164,9 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
       setLoading(false);
     }
   };
-
   useEffect(() => {
     if (account && isConnected) authenticateAndFetch(true);
   }, [account?.id, isConnected]);
-
   const safeParse = (text: string) => {
     try {
       return JSON.parse(text);
@@ -186,7 +174,6 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
       return null;
     }
   };
-
   const buildFilterBody = (
     pg: number,
     status: PaymentStatus,
@@ -197,7 +184,6 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
     if (type !== PaymentType.All) body.type = type;
     return JSON.stringify(body);
   };
-
   const fetchTransactions = async (pg = 1, tokenParam?: string) => {
     if (!isConnected) {
       Toast.show({ type: 'error', text1: 'No internet connection' });
@@ -207,9 +193,7 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
       setListLoading(true);
       const token = tokenParam || bearerToken;
       if (!token) throw new Error('Missing token');
-
       const body = buildFilterBody(pg, selectedStatus, selectedType);
-
       const res = await fetch(`${BASE_URL}/user/p/list`, {
         method: 'POST',
         headers: {
@@ -218,15 +202,12 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
         },
         body,
       });
-
       const text = await res.text();
       const json = safeParse(text);
-
       if (!json || !json.body) {
         console.log('Invalid response for tx list:', text);
         throw new Error('Invalid server response');
       }
-
       const payments = json.body.payments || [];
       const pagination = json.body.pagination || {};
       if (!mountedRef.current) return;
@@ -241,33 +222,37 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
       setRefreshing(false);
     }
   };
-
   useEffect(() => {
     if (!bearerToken) return;
     fetchTransactions(1, bearerToken);
   }, [selectedStatus, selectedType]);
-
   const formatDate = (iso?: string) =>
     iso ? new Date(iso).toLocaleString() : '-';
-
   const truncate = (s?: string, len = 6) =>
     s
       ? `${s.slice(0, Math.max(2, Math.floor(len / 2)))}...${s.slice(
           -Math.max(2, Math.floor(len / 2)),
         )}`
       : '-';
-
   const copyToClipboard = (text: string) => {
     Clipboard.setString(text);
     Toast.show({ type: 'success', text1: 'Copied to clipboard' });
   };
-
   const statusColor = (status?: string) => {
     const s = (status || '').toLowerCase();
-    if (s.includes('completed') || s.includes('success')) return '#10B981';
-    if (s.includes('pending') || s.includes('processing')) return '#F59E0B';
-    if (s.includes('failed')) return '#EF4444';
+    if (s === 'completed') return '#10B981';
+    if (s === 'pending' || s === 'processing') return '#F59E0B';
+    if (s === 'failed') return '#EF4444';
+    if (s === 'refunded') return '#3B82F6';
+    if (s === 'partial_refund') return '#8B5CF6';
     return '#7C88FF';
+  };
+
+  const getRewardTextColor = (status?: string) => {
+    const s = (status || '').toLowerCase();
+    if (s === 'completed') return 'text-green-400';
+    if (s === 'refunded' || s === 'partial_refund') return 'text-purple-400';
+    return 'text-gray-500'; // for pending/failed/etc
   };
 
   // ===========================================
@@ -282,7 +267,6 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
     const status = item.status || 'unknown';
     const type = item.type || '';
     const createdAt = item.createdAt;
-
     return (
       <TouchableOpacity
         onPress={() => {
@@ -300,7 +284,6 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
               <View style={{ flex: 1, paddingRight: 8 }}>
                 <View className="flex-row items-center mt-1">
                   <Text className="text-gray-300 text-xs mr-2">{type}</Text>
-
                   {hash ? (
                     <TouchableOpacity
                       onPress={() =>
@@ -318,16 +301,13 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
                     </TouchableOpacity>
                   ) : null}
                 </View>
-
                 <Text className="text-gray-400 text-xs mt-2">
                   Deposit: {truncate(depositAddr, 8)}
                 </Text>
-
                 <Text className="text-gray-500 text-xs mt-1">
                   {tx.time ? formatDate(tx.time) : formatDate(createdAt)}
                 </Text>
               </View>
-
               {/* Amount + Status */}
               <View className="items-end">
                 <View
@@ -342,7 +322,6 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
                     {meaAmount} MEA
                   </Text>
                 </View>
-
                 <View
                   className="rounded-full px-3 py-1"
                   style={{ backgroundColor: `${statusColor(status)}22` }}
@@ -359,7 +338,6 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
                 </View>
               </View>
             </View>
-
             {/* Payment ID + Refund button */}
             <View className="flex-row items-center justify-between mt-3">
               <TouchableOpacity
@@ -380,14 +358,12 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
       </TouchableOpacity>
     );
   };
-
   // ===============================================
   // PAGINATION BAR
   // ===============================================
   const PaginationBar = () => {
     const canPrev = page > 1;
     const canNext = page * LIMIT < total;
-
     return (
       <View className="bg-black p-4">
         <View className="flex-row justify-between items-center px-4">
@@ -408,13 +384,11 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
               {'◀ Prev'}
             </Text>
           </TouchableOpacity>
-
           <View className="flex-row items-center space-x-4">
             <Text className="text-gray-300 text-sm">Page {page}</Text>
             <Text className="text-gray-400 text-sm">·</Text>
             <Text className="text-gray-300 text-sm">{total} total</Text>
           </View>
-
           <TouchableOpacity
             disabled={!canNext}
             onPress={() => {
@@ -436,7 +410,6 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
       </View>
     );
   };
-
   // =======================================================
   // REFUND QR POPUP
   // =======================================================
@@ -447,7 +420,6 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
           <Text className="text-white text-lg font-semibold mb-4">
             Refund Request
           </Text>
-
           <View className="bg-white p-4 rounded-xl">
             <QRCode
               value={`${refundPaymentId}`}
@@ -456,13 +428,10 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
               backgroundColor="white"
             />
           </View>
-
           <Text className="text-gray-400 text-sm mt-4 text-center">
             Scan to refund payment ID:
           </Text>
-
           <Text className="text-white mt-1 font-medium">{refundPaymentId}</Text>
-
           <TouchableOpacity
             onPress={() => setRefundQrVisible(false)}
             className="bg-[#9707B5] rounded-xl py-3 px-6 mt-6"
@@ -473,7 +442,6 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
       </View>
     </Modal>
   );
-
   // =======================================================
   // STATUS & TYPE DROPDOWNS (sliding modal style)
   // =======================================================
@@ -492,14 +460,20 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
                   Filter by Status
                 </Text>
               </View>
-              <View className="p-1 max-h-[320]">
+              <View className="p-1 max-h-[400]">
                 {Object.values(PaymentStatus).map((s: any) => {
                   // display capitalization for 'All' and enums
                   const label =
                     typeof s === 'string'
                       ? s === 'All'
                         ? 'All'
-                        : s.charAt(0).toUpperCase() + s.slice(1)
+                        : s
+                            .split('_')
+                            .map(
+                              (part: string) =>
+                                part.charAt(0).toUpperCase() + part.slice(1),
+                            )
+                            .join(' ')
                       : String(s);
                   return (
                     <TouchableOpacity
@@ -534,7 +508,6 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
       </Modal>
     );
   };
-
   const TypeDropdown = () => {
     return (
       <Modal visible={typeDropdownOpen} transparent animationType="slide">
@@ -598,7 +571,6 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
       </Modal>
     );
   };
-
   // =======================================================
   // DETAIL MODAL (WITH REFUND BUTTON)
   // =======================================================
@@ -610,14 +582,12 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
       </Text>
     </View>
   );
-
   const renderModal = () => {
     if (!selectedTx) return null;
     const tx = selectedTx.transaction?.tx || {};
     const processed = selectedTx.transaction?.processed || {};
     const reward = selectedTx.transaction?.reward || {};
     const params = selectedTx.params || {};
-
     return (
       <Modal visible={modalVisible} animationType="slide" transparent>
         <View className="flex-1 bg-black/70 justify-end">
@@ -627,7 +597,6 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
               <Text className="text-white text-lg font-bold">
                 Transaction Details
               </Text>
-
               <TouchableOpacity
                 onPress={() => setModalVisible(false)}
                 className="p-2"
@@ -635,7 +604,6 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
                 <Text className="text-gray-400">Close</Text>
               </TouchableOpacity>
             </View>
-
             {/* Scroll content */}
             <ScrollView
               showsVerticalScrollIndicator={false}
@@ -650,7 +618,6 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
                       {selectedTx._id}
                     </Text>
                   </View>
-
                   <View className="items-end">
                     <Text className="text-gray-300 text-xs">Status</Text>
                     <View
@@ -670,26 +637,56 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
                     </View>
                   </View>
                 </View>
-
                 <View className="flex-row justify-between items-end mt-3">
                   <View>
+                    {/* ---------- DETERMINE REWARD AMOUNT COLOR ---------- */}
+                    {(() => {
+                      const s = selectedTx.status;
+                      let color = 'text-gray-400'; // default
+
+                      if (s === 'completed') color = 'text-green-400';
+                      else if (s === 'pending' || s === 'processing')
+                        color = 'text-yellow-400';
+                      else if (
+                        s === 'failed' ||
+                        s === 'refunded' ||
+                        s === 'partial_refund'
+                      )
+                        color = 'text-red-400';
+
+                      return (
+                        <>
+                          <Text className="text-gray-300 text-xs">
+                            Reward (USDT)
+                          </Text>
+                          <Text className={`${color} font-bold text-lg`}>
+                            {reward.usdt_amount ?? 0} USDT
+                          </Text>
+                        </>
+                      );
+                    })()}
+
+                    {/* ---------- TAG BELOW AMOUNT ---------- */}
+                    {(selectedTx.status === 'refunded' ||
+                      selectedTx.status === 'partial_refund') && (
+                      <View className="bg-red-900/30 border border-red-600 rounded-md mt-1 px-2 py-1">
+                        <Text className="text-red-400 text-xs font-medium">
+                          Cancelled
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+
+                  <View className="items-end">
                     <Text className="text-gray-300 text-xs">Processed MEA</Text>
                     <Text className="text-yellow-300 font-semibold text-lg">
                       {processed.mea_amount ?? params.mea_amount ?? 0} MEA
                     </Text>
                   </View>
-                  <View className="items-end">
-                    <Text className="text-gray-300 text-xs">Reward (USDT)</Text>
-                    <Text className="text-green-400 font-semibold">
-                      {reward.usdt_amount ?? 0} USDT
-                    </Text>
-                  </View>
                 </View>
               </View>
-
               {/* HASH */}
               <DetailRow label="Hash" value={tx.hash} small />
-
               {tx.hash ? (
                 <View className="flex-row items-center space-x-3 mb-3">
                   <TouchableOpacity
@@ -705,7 +702,6 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
                       Open in Explorer
                     </Text>
                   </TouchableOpacity>
-
                   <TouchableOpacity
                     onPress={() => copyToClipboard(tx.hash)}
                     className="flex-row items-center"
@@ -717,18 +713,14 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
                   </TouchableOpacity>
                 </View>
               ) : null}
-
               <DetailRow
                 label="Deposit Address"
                 value={tx.deposit_address}
                 small
               />
-
               <DetailRow label="User Address" value={tx.user_address} small />
-
               <View className="mb-4">
                 <Text className="text-gray-400 text-sm mb-2">Amounts</Text>
-
                 <DetailRow
                   label="MEA (processed)"
                   value={`${processed.mea_amount ?? 0} MEA`}
@@ -746,30 +738,105 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
                   value={params.usdt_amount ?? '-'}
                 />
               </View>
-
-              {/* Reward Block */}
-              <View
-                className="mb-4 p-3 rounded-xl"
-                style={{ backgroundColor: '#041014' }}
-              >
-                <View className="flex-row justify-between items-center mb-2">
-                  <Text className="text-white font-semibold">Reward</Text>
-                  <Text className="text-green-400 font-bold">
-                    {reward.usdt_amount ?? 0} USDT
-                  </Text>
+              {/* Conditional Section: Reward or Refunds */}
+              {selectedTx.status === 'completed' ? (
+                <View
+                  className="mb-4 p-3 rounded-xl"
+                  style={{ backgroundColor: '#041014' }}
+                >
+                  <View className="flex-row justify-between items-center mb-2">
+                    <Text className="text-white font-semibold">Reward</Text>
+                    <Text className="text-green-400 font-bold">
+                      {reward.usdt_amount ?? 0} USDT
+                    </Text>
+                  </View>
+                  <DetailRow
+                    label="Reward Ratio"
+                    value={reward.reward_ratio ?? '-'}
+                  />
+                  <DetailRow
+                    label="Instant Swap"
+                    value={params.instant_swap ? 'Yes' : 'No'}
+                  />
                 </View>
-
-                <DetailRow
-                  label="Reward Ratio"
-                  value={reward.reward_ratio ?? '-'}
-                />
-
-                <DetailRow
-                  label="Instant Swap"
-                  value={params.instant_swap ? 'Yes' : 'No'}
-                />
-              </View>
-
+              ) : selectedTx.status === 'refunded' ||
+                selectedTx.status === 'partial_refund' ? (
+                <View className="mb-4">
+                  <Text className="text-white font-semibold mb-3">Refunds</Text>
+                  {selectedTx.refunds.map((refund: any, index: number) => (
+                    <View
+                      key={refund._id}
+                      className="bg-[#041014] p-3 rounded-xl mb-3"
+                    >
+                      <Text className="text-white font-semibold mb-2">
+                        Refund #{index + 1}
+                      </Text>
+                      <DetailRow
+                        label="Created at"
+                        value={formatDate(refund.createdAt)}
+                      />
+                      <DetailRow
+                        label="MEA Amount (params)"
+                        value={refund.params.mea_amount}
+                      />
+                      <DetailRow
+                        label="USDT Amount (params)"
+                        value={refund.params.usdt_amount}
+                      />
+                      <DetailRow label="Status" value={refund.status} />
+                      {/* Transaction */}
+                      <Text className="text-gray-400 text-sm mt-2 mb-2">
+                        Transaction
+                      </Text>
+                      <DetailRow
+                        label="MEA Amount (processed)"
+                        value={refund.transaction?.processed?.mea_amount ?? '-'}
+                      />
+                      <DetailRow
+                        label="MEA Price"
+                        value={refund.transaction?.processed?.mea_price ?? '-'}
+                      />
+                      <DetailRow
+                        label="Hash"
+                        value={refund.transaction?.tx?.hash ?? '-'}
+                        small
+                      />
+                      {refund.transaction?.tx?.hash ? (
+                        <View className="flex-row items-center space-x-3 mb-3">
+                          <TouchableOpacity
+                            onPress={() =>
+                              Linking.openURL(
+                                `https://explorer.solana.com/tx/${refund.transaction.tx.hash}?cluster=mainnet-beta`,
+                              )
+                            }
+                            className="flex-row items-center"
+                          >
+                            <OpenLinkIcon width={14} height={14} />
+                            <Text className="text-blue-400 text-sm ml-2">
+                              Open in Explorer
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() =>
+                              copyToClipboard(refund.transaction.tx.hash)
+                            }
+                            className="flex-row items-center"
+                          >
+                            <CopyIcon width={14} height={14} />
+                            <Text className="text-gray-400 text-sm ml-2">
+                              Copy hash
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      ) : null}
+                      <DetailRow
+                        label="Tx Time"
+                        value={formatDate(refund.transaction?.tx?.time)}
+                      />
+                    </View>
+                  ))}
+                </View>
+              ) : null}
               {/* Timestamps */}
               <View className="mb-6">
                 <DetailRow
@@ -785,7 +852,6 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
                   value={tx.time ? formatDate(tx.time) : '-'}
                 />
               </View>
-
               {/* Footer Buttons: Close + Refund */}
               <View className="flex-row justify-between mt-4">
                 {/* Close */}
@@ -795,9 +861,9 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
                 >
                   <Text className="text-white font-semibold">Close</Text>
                 </TouchableOpacity>
-
-                {/* Refund (only if completed) */}
-                {selectedTx.status === 'completed' && (
+                {/* Refund (only if completed or partial_refund) */}
+                {(selectedTx.status === 'completed' ||
+                  selectedTx.status === 'partial_refund') && (
                   <TouchableOpacity
                     onPress={() => {
                       setRefundPaymentId(selectedTx._id);
@@ -815,7 +881,6 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
       </Modal>
     );
   };
-
   // OFFLINE page
   if (!isConnected) {
     return (
@@ -830,7 +895,6 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
       </View>
     );
   }
-
   // LOADING screen
   if (loading) {
     return (
@@ -840,7 +904,6 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
       </View>
     );
   }
-
   return (
     <SafeAreaView className="flex-1 bg-black">
       {/* Header */}
@@ -877,7 +940,6 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
           </TouchableOpacity>
         </View>
       </View>
-
       {/* Filters */}
       <View className="flex-row px-4 py-3 bg-gray-900 items-center space-x-3">
         <TouchableOpacity
@@ -889,7 +951,6 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
             <Text className="text-white font-semibold">{selectedStatus}</Text>
           </Text>
         </TouchableOpacity>
-
         <TouchableOpacity
           onPress={() => setTypeDropdownOpen(true)}
           className="flex-1 rounded-xl border border-gray-700 px-3 py-2"
@@ -900,11 +961,9 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
           </Text>
         </TouchableOpacity>
       </View>
-
       {/* Dropdown modals */}
       {StatusDropdown()}
       {TypeDropdown()}
-
       {/* List */}
       <View style={{ flex: 1, paddingBottom: 0 }}>
         {!listLoading ? (
@@ -931,18 +990,14 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
           </View>
         )}
       </View>
-
       {/* Detail Modal */}
       {renderModal()}
-
       {/* Refund QR Modal */}
       {RefundQRModal()}
-
       <BottomNavBar active="History" />
     </SafeAreaView>
   );
 }
-
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
