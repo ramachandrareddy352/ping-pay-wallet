@@ -159,37 +159,31 @@ function AppContent() {
    * do not run unlock/home logic, app state, navigation, etc.
    */
   useEffect(() => {
-    if (isMandatory || loading) return; // 🔒 stop setup if updating
+    if (isMandatory || loading) return; // Block logic when update-screen must show
 
-    let mounted = true;
-    const run = async () => {
+    let isMounted = true;
+    let unsubscribe: (() => void) | undefined;
+
+    const init = async () => {
       setReady(false);
 
-      /** ORIGINAL SESSION / BOOT / ROUTING LOGIC
-       *  only runs when update is NOT required
-       */
+      /** Restore last session */
       const prevSession = await getSession();
       const prevWasRemoved = !!prevSession;
-
       await setSession();
-      const persisted = await getLastState();
 
-      if (prevWasRemoved) {
-        bootStateRef.current = 'removed';
-      } else {
-        bootStateRef.current = persisted;
-      }
+      const persistedState = await getLastState();
+      bootStateRef.current = prevWasRemoved ? 'removed' : persistedState;
 
       const mnemonic = await loadMnemonic();
       const pwExists = await loadPassword();
 
+      // Routing logic remains identical
       if (bootStateRef.current === 'removed') {
         handledRemovedRef.current = false;
 
         if (mnemonic && pwExists) {
-          await saveLastRoute(
-            JSON.stringify({ name: 'Home', params: undefined }),
-          );
+          await saveLastRoute(JSON.stringify({ name: 'Home' }));
           await setForceHomeOnUnlock();
           setInitialRoute('Unlock');
         } else {
@@ -206,71 +200,90 @@ function AppContent() {
       }
 
       await markAppClosed('active');
-
-      if (!mounted) return;
+      if (!isMounted) return;
       setReady(true);
 
-      /** APP STATE HANDLING — ONLY when update is NOT mandatory */
-      const handler = async (nextState: AppStateStatus) => {
-        try {
-          if (isMandatory) return; // 🔐 Always ignore state changes if mandatory update open
+      /**
+       * IMPORTANT CHANGE FOR RN 0.82:
+       * Always use AppState.currentState because events are now delayed.
+       */
+      let lastState: AppStateStatus = AppState.currentState;
 
-          if (nextState === 'background') {
-            await markAppClosed('background');
-            await saveLastUnlockTime(Date.now().toString());
-            if (navigationRef.isReady()) {
-              const cur = navigationRef.getCurrentRoute();
-              if (cur) {
-                const payload = {
-                  name: cur.name,
-                  params: cur.params ?? undefined,
-                };
-                await saveLastRoute(JSON.stringify(payload));
-              }
+      const onAppStateChange = async (nextState: AppStateStatus) => {
+        if (!isMounted) return;
+        if (isMandatory) return; // never run logic if update-screen is shown
+
+        // Track transitions
+        const wasBackground = lastState.match(/background|inactive/);
+        const isNowActive = nextState === 'active';
+
+        lastState = nextState;
+
+        /** BACKGROUND → record lock info */
+        if (nextState === 'background') {
+          await markAppClosed('background');
+          await saveLastUnlockTime(Date.now().toString());
+
+          if (navigationRef.isReady()) {
+            const route = navigationRef.getCurrentRoute();
+            if (route) {
+              await saveLastRoute(
+                JSON.stringify({
+                  name: route.name,
+                  params: route.params ?? undefined,
+                }),
+              );
             }
-            await clearForceHomeOnUnlock();
-            bootStateRef.current = 'background';
-            return;
           }
 
-          if (nextState === 'active') {
-            if (isMandatory) return; // 🔐 still ignore everything
+          await clearForceHomeOnUnlock();
+          bootStateRef.current = 'background';
+          return;
+        }
 
-            await markAppClosed('active');
+        /** ACTIVE → triggered after unlock or re-open */
+        if (isNowActive && wasBackground) {
+          await markAppClosed('active');
 
-            /** ORIGINAL unlock/restore logic … UNCHANGED */
-            // ...
-            // (KEEP YOUR ORIGINAL LOGIC HERE)
-            // ...
+          const unlockRequired = await loadAuthRequirement();
+          const ms = parseAuthRequirementToMs(unlockRequired);
+          const lastUnlock = Number(await loadLastUnlockTime());
+
+          const shouldLock =
+            unlockRequired !== 'never' && Date.now() - lastUnlock >= ms;
+
+          if (!navigationRef.isReady()) {
+            // Wait until navigation is ready, otherwise navigate() fails silently
+            const interval = setInterval(() => {
+              if (navigationRef.isReady()) {
+                clearInterval(interval);
+                if (shouldLock) navigationRef.navigate('Unlock');
+              }
+            }, 50);
+          } else {
+            if (shouldLock) navigationRef.navigate('Unlock');
           }
-        } catch (e) {
-          console.log('AppState-handler-error', e);
         }
       };
 
-      const sub = AppState.addEventListener('change', handler);
+      // NEW RN 0.82 API
+      unsubscribe = AppState.addEventListener(
+        'change',
+        onAppStateChange,
+      ).remove;
+    };
 
-      return () => {
-        try {
-          sub?.remove();
-        } catch {}
-      };
-    }; // run()
-
-    const cleanupPromise = run();
+    init();
 
     return () => {
-      // prevent auto session/closing logic when update is mandatory
+      isMounted = false;
       if (!isMandatory) {
         markAppClosed('removed').catch(() => {});
         clearSession().catch(() => {});
       }
-
-      Promise.resolve(cleanupPromise).then(cleanup => {
-        if (typeof cleanup === 'function') cleanup();
-      });
+      unsubscribe?.();
     };
-  }, [isMandatory, loading]); // 👈 dependency
+  }, [isMandatory, loading]);
 
   // 🔒 BLOCK APP AND SHOW UPDATE SCREEN
   if (isMandatory && versionInfo && !loading) {
