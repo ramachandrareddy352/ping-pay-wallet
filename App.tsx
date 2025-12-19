@@ -1,5 +1,5 @@
 import React, { JSX, useEffect, useRef, useState } from 'react';
-import { Text, AppState, Image, AppStateStatus } from 'react-native';
+import { Text, AppState, Image, AppStateStatus, Alert } from 'react-native';
 import {
   NavigationContainer,
   useNavigationContainerRef,
@@ -18,6 +18,7 @@ import ConfirmPasscodeScreen from './screens/setup/ConfirmPasscodeScreen';
 import ImportPhraseScreen from './screens/setup/ImportPhraseScreen';
 import HomeScreen from './screens/main/HomeScreen';
 import UnlockScreen from './screens/main/UnlockScreen';
+import BiometricUnlockScreen from './screens/main/BiometricUnlockScreen'; // NEW: Add this import
 import TokenDataScreen from './screens/main/TokenDataScreen';
 import AccountsScreen from './screens/accounts/AccountsScreen';
 import ImportAccountScreen from './screens/accounts/ImportAccountScreen';
@@ -62,6 +63,7 @@ import {
   saveLastRoute,
   loadLastRoute,
 } from './utils/storage';
+import { checkBiometricsAvailability } from './utils/biometric'; // NEW: Add this import
 import TermsAndConditionsScreen from './screens/settings/TermsAndConditionsScreen';
 import { useMandatoryUpdate } from './src/hooks/useMandatoryUpdate';
 import UpdateRequiredScreen from './screens/setup/UpdateRequiredScreen';
@@ -140,9 +142,9 @@ const getSession = async (): Promise<string | null> => {
 };
 
 function AppContent() {
-  const [initialRoute, setInitialRoute] = useState<'Onboarding' | 'Unlock'>(
-    'Onboarding',
-  );
+  const [initialRoute, setInitialRoute] = useState<
+    'Onboarding' | 'Unlock' | 'BiometricUnlock'
+  >('Onboarding'); // UPDATED: Include 'BiometricUnlock'
 
   const { isMandatory, updateMessage, loading, versionInfo } =
     useMandatoryUpdate();
@@ -178,21 +180,24 @@ function AppContent() {
       const mnemonic = await loadMnemonic();
       const pwExists = await loadPassword();
 
-      // Routing logic remains identical
+      // UPDATED: Check biometrics availability for routing
+      const biometricsAvailable = await checkBiometricsAvailability();
+
+      // Routing logic remains identical, but prioritize biometrics if available
       if (bootStateRef.current === 'removed') {
         handledRemovedRef.current = false;
 
         if (mnemonic && pwExists) {
           await saveLastRoute(JSON.stringify({ name: 'Home' }));
           await setForceHomeOnUnlock();
-          setInitialRoute('Unlock');
+          setInitialRoute(biometricsAvailable ? 'BiometricUnlock' : 'Unlock'); // UPDATED
         } else {
           await saveAuthRequirement('never');
           setInitialRoute('Onboarding');
         }
       } else {
         if (mnemonic && pwExists) {
-          setInitialRoute('Unlock');
+          setInitialRoute(biometricsAvailable ? 'BiometricUnlock' : 'Unlock'); // UPDATED
         } else {
           await saveAuthRequirement('never');
           setInitialRoute('Onboarding');
@@ -257,11 +262,39 @@ function AppContent() {
             const interval = setInterval(() => {
               if (navigationRef.isReady()) {
                 clearInterval(interval);
-                if (shouldLock) navigationRef.navigate('Unlock');
+                if (shouldLock) {
+                  // UPDATED: Prefer biometrics if available
+                  checkBiometricsAvailability()
+                    .then(available => {
+                      navigationRef.navigate(
+                        available ? 'BiometricUnlock' : 'Unlock',
+                      );
+                    })
+                    .catch(() => navigationRef.navigate('Unlock'));
+                }
               }
             }, 50);
           } else {
-            if (shouldLock) navigationRef.navigate('Unlock');
+            if (shouldLock) {
+              // UPDATED: Prefer biometrics if available
+              checkBiometricsAvailability()
+                .then(available => {
+                  navigationRef.reset({
+                    index: 0,
+                    routes: [
+                      {
+                        name: available ? 'BiometricUnlock' : 'Unlock',
+                      },
+                    ],
+                  });
+                })
+                .catch(() =>
+                  navigationRef.reset({
+                    index: 0,
+                    routes: [{ name: 'Unlock' }],
+                  }),
+                );
+            }
           }
         }
       };
@@ -341,6 +374,11 @@ function AppContent() {
                     component={ImportPhraseScreen}
                   />
                   <Stack.Screen name="Unlock" component={UnlockScreen} />
+                  <Stack.Screen
+                    name="BiometricUnlock"
+                    component={BiometricUnlockScreen}
+                  />
+                  {/* NEW: Add this screen */}
                   <Stack.Screen name="Home" component={HomeScreen} />
                   <Stack.Screen name="Accounts" component={AccountsScreen} />
                   <Stack.Screen name="Settings" component={SettingsScreen} />

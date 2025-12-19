@@ -509,9 +509,9 @@ export default function SwapTokenScreen({ navigation }: Props) {
     return beforeFee;
   };
 
-  const fmt = (n: number, maxDecimals = 3) => {
+  const fmt = (n: number, maxDecimals = 4) => {
     if (!isFinite(n) || Number.isNaN(n)) return '';
-    const fixed = n.toFixed(Math.min(maxDecimals, 8));
+    const fixed = n.toFixed(Math.min(maxDecimals, 4));
     return parseFloat(fixed).toString();
   };
 
@@ -521,7 +521,7 @@ export default function SwapTokenScreen({ navigation }: Props) {
     return num.toLocaleString('en-US', { maximumFractionDigits: 0 });
   };
 
-  const sanitizeDecimalInput = (value: string, maxDecimals = 3) => {
+  const sanitizeDecimalInput = (value: string, maxDecimals = 25) => {
     if (value === undefined || value === null) return '';
     if (value === '') return '';
     let cleaned = value.replace(/[^0-9.]/g, '');
@@ -639,7 +639,7 @@ export default function SwapTokenScreen({ navigation }: Props) {
 
   const onSellAmountChange = (val: string) => {
     setInputType('sell');
-    const sanitized = sanitizeDecimalInput(val, 3);
+    const sanitized = sanitizeDecimalInput(val, 25);
     setSellAmount(sanitized);
     const numeric = parseFloat(sanitized);
     if (!bestPool || isNaN(numeric)) {
@@ -648,12 +648,12 @@ export default function SwapTokenScreen({ navigation }: Props) {
     }
     const sellMint = sellToken?.mint || '';
     const out = computeOutputFromSell(bestPool, numeric, sellMint);
-    setBuyAmount(out ? fmt(out, 3) : '');
+    setBuyAmount(out ? fmt(out, 4) : '');
   };
 
   const onBuyAmountChange = (val: string) => {
     setInputType('buy');
-    const sanitized = sanitizeDecimalInput(val, 3);
+    const sanitized = sanitizeDecimalInput(val, 25);
     setBuyAmount(sanitized);
     const numeric = parseFloat(sanitized);
     if (!bestPool || isNaN(numeric)) {
@@ -662,7 +662,7 @@ export default function SwapTokenScreen({ navigation }: Props) {
     }
     const sellMint = sellToken?.mint || '';
     const inAmt = computeSellFromBuy(bestPool, numeric, sellMint);
-    setSellAmount(inAmt ? fmt(inAmt, 3) : '');
+    setSellAmount(inAmt ? fmt(inAmt, 4) : '');
   };
 
   // --------------------- Balance fetching (FIXED) ---------------------
