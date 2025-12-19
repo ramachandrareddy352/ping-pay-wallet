@@ -8,6 +8,7 @@ export type RootStackParamList = {
 
   Home: undefined;
   Unlock: undefined;
+  BiometricUnlock: undefined;
   Explore: undefined;
   TransactionHistory: {
     accountId: string;

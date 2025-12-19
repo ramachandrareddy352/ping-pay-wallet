@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -71,6 +71,9 @@ export default function HomeScreen({ navigation }: Props) {
   const [hideBalance, setHideBalance] = useState(false);
   const isFocused = useIsFocused();
 
+  // Ref to store interval ID
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
   // Monitor internet connection
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener(state => {
@@ -109,78 +112,52 @@ export default function HomeScreen({ navigation }: Props) {
     }
   };
 
-  // Fetch account data
-  const fetchAccountData = async () => {
-    if (!isConnected) {
-      return;
+  // Internal function to fetch balances without UI reset/loading
+  const fetchBalances = async () => {
+    if (!currentAccount || !wallet || !isConnected) {
+      return { solBal: 0, enrichedTokens: [], splUsd: 0, solUsd: 0 };
     }
 
-    setListLoading(true);
-    setCollectibles([]);
-    setTokenBalances([]);
-    setTotalUsd(0);
+    const rpcUrl = getRpcUrl(wallet.network);
+    const solBal = await fetchSolBalance(currentAccount.publicKey, rpcUrl);
+
+    const enrichedTokens: TokenBalance[] = [];
+
+    // SOL
+    const solPrice = await fetchSolPrice(wallet.network);
+    const solUsd = solBal * solPrice;
+
+    enrichedTokens.push({
+      mint: NATIVE_SOL_MINT,
+      amount: solBal,
+      decimals: 9,
+      name: 'Solana',
+      symbol: 'SOL',
+      logoURI: '',
+      price: solPrice,
+      usd: solUsd,
+    });
+
+    // Fungible tokens
+    const { items: SPLTokensList, total_usd: splUsd } = await fetchSPL(
+      rpcUrl,
+      currentAccount.publicKey,
+    );
+    for (const item of SPLTokensList) {
+      enrichedTokens.push(item);
+    }
+
+    return { solBal, enrichedTokens, splUsd, solUsd };
+  };
+
+  // Function to update balances periodically (no loading, no reset)
+  const updateBalances = async () => {
+    if (!currentAccount || !wallet || !isConnected) return;
 
     try {
-      setTotalUsd(0);
-      if (!currentAccount || !wallet) {
-        setListLoading(false);
-        return;
-      }
+      const { enrichedTokens, solUsd, splUsd } = await fetchBalances();
 
-      const rpcUrl = getRpcUrl(wallet.network);
-      const solBal = await fetchSolBalance(currentAccount.publicKey, rpcUrl);
-
-      const enrichedTokens: TokenBalance[] = [];
-
-      // SOL
-      const solPrice = await fetchSolPrice(wallet.network);
-      const solUsd = solBal * solPrice;
-
-      enrichedTokens.push({
-        mint: NATIVE_SOL_MINT,
-        amount: solBal,
-        decimals: 9,
-        name: 'Solana',
-        symbol: 'SOL',
-        logoURI: '',
-        price: solPrice,
-        usd: solUsd,
-      });
-
-      // Fungible tokens
-      const { items: SPLTokensList, total_usd: splUsd } = await fetchSPL(
-        rpcUrl,
-        currentAccount.publicKey,
-      );
-      for (const item of SPLTokensList) {
-        enrichedTokens.push(item);
-      }
-      setTotalUsd(splUsd + solUsd);
-
-      // Process collectibles
-      const NFTList: Collectible[] = [];
-      const NFTTokenList = await fetchNFT(rpcUrl, currentAccount.publicKey);
-      for (const item of NFTTokenList) {
-        NFTList.push(item);
-      }
-      setCollectibles(NFTTokenList);
-
-      // Sort tokens
-      const sortedTokens: TokenBalance[] = [];
-      const bookmarks = wallet?.bookmarks || [];
-
-      const solToken = enrichedTokens.find(t => t.mint === NATIVE_SOL_MINT) || {
-        mint: NATIVE_SOL_MINT,
-        amount: 0,
-        decimals: 9,
-        name: 'Solana',
-        symbol: 'SOL',
-        logoURI: '',
-        price: 0,
-        usd: 0,
-      };
-      sortedTokens.push(solToken);
-
+      // Mecca mint setup
       const meccaMint =
         wallet.network === 'devnet'
           ? 'DUbbqANBKJqAUCJveSEFgVPGHDwkdc6d9UiQyxBLcyN3'
@@ -204,7 +181,7 @@ export default function HomeScreen({ navigation }: Props) {
           meccaToken = {
             mint: meccaMint,
             amount: 0,
-            decimals: 6, // Assuming standard decimals; adjust if known
+            decimals: 6,
             name: 'Mecca',
             symbol: 'MEA',
             logoURI:
@@ -214,7 +191,198 @@ export default function HomeScreen({ navigation }: Props) {
           };
         }
       }
-      sortedTokens.push(meccaToken);
+
+      // Merge with existing tokenBalances
+      const updatedTokens = [...tokenBalances];
+      let newTotalUsd = 0;
+
+      // Update SOL
+      const solIndex = updatedTokens.findIndex(t => t.mint === NATIVE_SOL_MINT);
+      if (solIndex !== -1) {
+        updatedTokens[solIndex] = {
+          ...updatedTokens[solIndex],
+          amount:
+            enrichedTokens.find(t => t.mint === NATIVE_SOL_MINT)?.amount || 0,
+          price:
+            enrichedTokens.find(t => t.mint === NATIVE_SOL_MINT)?.price || 0,
+          usd: enrichedTokens.find(t => t.mint === NATIVE_SOL_MINT)?.usd || 0,
+        };
+      } else {
+        // Add SOL if missing
+        const solToken = enrichedTokens.find(
+          t => t.mint === NATIVE_SOL_MINT,
+        ) || {
+          mint: NATIVE_SOL_MINT,
+          amount: 0,
+          decimals: 9,
+          name: 'Solana',
+          symbol: 'SOL',
+          logoURI: '',
+          price: 0,
+          usd: 0,
+        };
+        updatedTokens.unshift(solToken);
+      }
+
+      // Update Mecca
+      const meccaIndex = updatedTokens.findIndex(t => t.mint === meccaMint);
+      if (meccaIndex !== -1) {
+        updatedTokens[meccaIndex] = {
+          ...updatedTokens[meccaIndex],
+          ...meccaToken,
+          amount: enrichedTokens.find(t => t.mint === meccaMint)?.amount || 0,
+          usd:
+            (enrichedTokens.find(t => t.mint === meccaMint)?.amount || 0) *
+            (meccaToken.price || 0),
+        };
+      } else {
+        // Insert Mecca after SOL
+        updatedTokens.splice(1, 0, meccaToken);
+      }
+
+      // Update other tokens from enriched
+      for (const newToken of enrichedTokens) {
+        if (newToken.mint === NATIVE_SOL_MINT || newToken.mint === meccaMint)
+          continue;
+
+        const existingIndex = updatedTokens.findIndex(
+          t => t.mint === newToken.mint,
+        );
+        if (existingIndex !== -1) {
+          // Update existing
+          updatedTokens[existingIndex] = {
+            ...updatedTokens[existingIndex],
+            ...newToken,
+          };
+        } else {
+          // Add new
+          updatedTokens.push(newToken);
+        }
+      }
+
+      // Remove tokens with 0 balance if not bookmarked (optional: adjust as needed)
+      const bookmarks = wallet?.bookmarks || [];
+      updatedTokens.forEach((token, index) => {
+        if (
+          token.amount === 0 &&
+          !bookmarks.includes(token.mint) &&
+          token.mint !== NATIVE_SOL_MINT &&
+          token.mint !== meccaMint
+        ) {
+          updatedTokens.splice(index, 1);
+        }
+      });
+
+      // Re-sort: SOL first, Mecca second, bookmarked, others
+      const sortedTokens: TokenBalance[] = [];
+      const solToken = updatedTokens.find(t => t.mint === NATIVE_SOL_MINT);
+      if (solToken) sortedTokens.push(solToken);
+
+      const meccaInSorted = updatedTokens.find(t => t.mint === meccaMint);
+      if (meccaInSorted) sortedTokens.push(meccaInSorted);
+
+      const bookmarkedTokens = updatedTokens
+        .filter(
+          t =>
+            t.mint !== NATIVE_SOL_MINT &&
+            t.mint !== meccaMint &&
+            bookmarks.includes(t.mint),
+        )
+        .sort(
+          (a, b) =>
+            bookmarks.indexOf(a.mint as string) -
+            bookmarks.indexOf(b.mint as string),
+        );
+      const otherTokens = updatedTokens.filter(
+        t =>
+          t.mint !== NATIVE_SOL_MINT &&
+          t.mint !== meccaMint &&
+          !bookmarks.includes(t.mint),
+      );
+      sortedTokens.push(...bookmarkedTokens, ...otherTokens);
+
+      // Calculate totalUsd
+      newTotalUsd = sortedTokens.reduce((sum, t) => sum + (t.usd || 0), 0);
+
+      setTokenBalances(sortedTokens);
+      setTotalUsd(newTotalUsd);
+    } catch (error) {
+      console.log('updateBalances =>', error);
+    }
+  };
+
+  // Fetch account data (full refresh with loading and NFT fetch)
+  const fetchAccountData = async () => {
+    if (!isConnected) {
+      return;
+    }
+
+    setListLoading(true);
+    setTokenBalances([]);
+    setCollectibles([]);
+    setTotalUsd(0);
+
+    try {
+      if (!currentAccount || !wallet) {
+        setListLoading(false);
+        return;
+      }
+
+      // Fetch balances
+      const { enrichedTokens, solUsd, splUsd } = await fetchBalances();
+
+      // Mecca setup (same as in updateBalances)
+      const meccaMint =
+        wallet.network === 'devnet'
+          ? 'DUbbqANBKJqAUCJveSEFgVPGHDwkdc6d9UiQyxBLcyN3'
+          : 'mecySk7eSawDNfAXvW3CquhLyxyKaXExFXgUUbEZE1T';
+      const cluster = wallet.network === 'devnet' ? 'devnet' : 'mainnet-beta';
+      let meccaToken = enrichedTokens.find(t => t.mint === meccaMint);
+      if (!meccaToken) {
+        const metadata = await fetchTokenMetadata(meccaMint, cluster);
+        if (metadata) {
+          meccaToken = {
+            mint: meccaMint,
+            amount: 0,
+            decimals: metadata.decimals,
+            name: metadata.name,
+            symbol: metadata.symbol,
+            logoURI: metadata.image_uri,
+            price: metadata.price_per_token,
+            usd: 0,
+          };
+        } else {
+          meccaToken = {
+            mint: meccaMint,
+            amount: 0,
+            decimals: 6,
+            name: 'Mecca',
+            symbol: 'MEA',
+            logoURI:
+              'https://raw.githubusercontent.com/mcret2024/tokendata/master/assets/images/mecca.png',
+            price: 0,
+            usd: 0,
+          };
+        }
+      }
+
+      // Sort tokens (same logic as in updateBalances)
+      const sortedTokens: TokenBalance[] = [];
+      const bookmarks = wallet?.bookmarks || [];
+
+      const solToken = enrichedTokens.find(t => t.mint === NATIVE_SOL_MINT) || {
+        mint: NATIVE_SOL_MINT,
+        amount: 0,
+        decimals: 9,
+        name: 'Solana',
+        symbol: 'SOL',
+        logoURI: '',
+        price: 0,
+        usd: 0,
+      };
+      sortedTokens.push(solToken);
+
+      if (meccaToken) sortedTokens.push(meccaToken);
 
       const bookmarkedTokens = enrichedTokens
         .filter(
@@ -237,6 +405,18 @@ export default function HomeScreen({ navigation }: Props) {
       sortedTokens.push(...bookmarkedTokens, ...otherTokens);
 
       setTokenBalances(sortedTokens);
+      setTotalUsd(splUsd + solUsd);
+
+      // Process collectibles (full refresh)
+      const NFTList: Collectible[] = [];
+      const NFTTokenList = await fetchNFT(
+        getRpcUrl(wallet.network),
+        currentAccount.publicKey,
+      );
+      for (const item of NFTTokenList) {
+        NFTList.push(item);
+      }
+      setCollectibles(NFTTokenList);
     } catch (error) {
       console.log('fetchAccountData =>', error);
     } finally {
@@ -249,25 +429,52 @@ export default function HomeScreen({ navigation }: Props) {
     handleCurrentAccount();
   }, []);
 
-  // Fetch data when currentAccount changes
+  // Fetch data when currentAccount changes (full refresh)
   useEffect(() => {
     if (currentAccount && wallet && isConnected) {
       fetchAccountData();
     }
   }, [currentAccount?.id, wallet?.network, isConnected]);
 
-  // Update on focus
+  // Update on focus (full refresh)
   useEffect(() => {
     if (isFocused) {
       handleCurrentAccount();
+      if (currentAccount && wallet && isConnected) {
+        fetchAccountData();
+      }
     }
   }, [isFocused]);
 
-  // useEffect(() => {
-  //   setTimeout(() => {
-  //     web3Wallet.signMessage('test');
-  //   }, 2000);
-  // }, []);
+  // Periodic balance updates every 5 seconds when focused and connected
+  useEffect(() => {
+    if (isFocused && isConnected && currentAccount && wallet) {
+      // Clear existing interval
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+
+      // Initial update
+      updateBalances();
+
+      // Set new interval
+      intervalRef.current = setInterval(() => {
+        updateBalances();
+      }, 5000);
+
+      return () => {
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+        }
+      };
+    } else {
+      // Clear interval if not focused/connected
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    }
+  }, [isFocused, isConnected, currentAccount?.id, wallet?.network]);
 
   // Airdrop on devnet
   const handleAirdrop = async () => {
@@ -297,7 +504,7 @@ export default function HomeScreen({ navigation }: Props) {
         type: 'success',
         text1: '2 SOL aidropped successfully',
       });
-      await fetchAccountData();
+      await fetchAccountData(); // Full refresh after airdrop
     } catch (error) {
       Toast.show({
         type: 'error',
