@@ -460,7 +460,7 @@ export default function HomeScreen({ navigation }: Props) {
       // Set new interval
       intervalRef.current = setInterval(() => {
         updateBalances();
-      }, 5000);
+      }, 3000);
 
       return () => {
         if (intervalRef.current) {

@@ -68,6 +68,7 @@ import TermsAndConditionsScreen from './screens/settings/TermsAndConditionsScree
 import { useMandatoryUpdate } from './src/hooks/useMandatoryUpdate';
 import UpdateRequiredScreen from './screens/setup/UpdateRequiredScreen';
 import MerchantPaymentScreen from './screens/store/MerchantPaymentScreen';
+import TransactionHistoryStoreScreen from './screens/history/TransactionHistoryStoreScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -431,6 +432,10 @@ function AppContent() {
                   <Stack.Screen
                     name="TransactionHistory"
                     component={TransactionHistoryScreen}
+                  />
+                  <Stack.Screen
+                    name="TransactionHistoryStore"
+                    component={TransactionHistoryStoreScreen}
                   />
                   <Stack.Screen
                     name="NetworkPreference"
