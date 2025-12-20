@@ -19,8 +19,6 @@ import NetInfo from '@react-native-community/netinfo';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Clipboard from '@react-native-clipboard/clipboard';
-import nacl from 'tweetnacl';
-import bs58 from 'bs58';
 
 import { RootStackParamList } from '../../types/navigation';
 import { loadWallet, WalletAccount, WalletData } from '../../utils/storage';
@@ -29,67 +27,113 @@ import UsernameFrame from '../../assets/images/user-logo.png';
 import Offline from '../../assets/icons/offline.svg';
 import OpenLinkIcon from '../../assets/icons/open-link.svg';
 import CopyIcon from '../../assets/icons/Copy-icon.svg';
+import TxSentIcon from '../../assets/icons/tx-sent.svg';
+import TxReceivedIcon from '../../assets/icons/tx-received.svg';
+import TxDappIcon from '../../assets/icons/tx-dapp.svg';
+import TxErrorIcon from '../../assets/icons/tx-error.svg'; // default / fallback
 
-import QRCode from 'react-native-qrcode-svg';
 import { useIsFocused } from '@react-navigation/native';
+import { Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 
-const BASE_URL = 'https://api-platform.pingpay.info';
 const LIMIT = 10;
+const BATCH_SIZE = 10;
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 type Props = NativeStackScreenProps<RootStackParamList, 'TransactionHistory'>;
 
-export enum PaymentStatus {
+export enum TransactionType {
   All = 'All',
-  Completed = 'completed',
-  Complete_Refunded = 'refunded',
-  Partial_Refund = 'partial_refund',
-  Pending = 'pending',
-  Processing = 'processing',
-  Failed = 'failed',
+  Sent = 'sent',
+  Received = 'received',
+  DappInteraction = 'dapp_interaction',
 }
 
-export enum PaymentType {
-  All = 'All',
-  DirectTransfer = 'direct_transfer',
-  PaymentLink = 'payment_link',
-  UserInitiated = 'user_initiated',
+interface Token {
+  mint: string;
+  change: number;
+  isNFT: boolean;
+  direction?: string;
+  type?: string;
 }
 
-export default function TransactionHistoryScreen({ navigation }: Props) {
+interface SolanaTransaction {
+  signature: string;
+  blockTime: number;
+  slot: number;
+  type: string;
+  subtype: string | null;
+  details: {
+    solChange: number;
+    fee: number;
+    programs: string[];
+    tokens: Token[];
+  };
+  formatted?: {
+    date: string;
+    time: string;
+  };
+}
+
+interface PaginationState {
+  currentPage: number;
+  allSignatures: Array<{ signature: string; blockTime: number }>;
+  lastBefore: string | undefined;
+  hasNextPage: boolean;
+  hasPrevPage: boolean;
+}
+
+const getTxIcon = (type: string) => {
+  switch (type) {
+    case 'sent':
+      return TxSentIcon;
+    case 'received':
+      return TxReceivedIcon;
+    case 'dapp_interaction':
+      return TxDappIcon;
+    default:
+      return TxErrorIcon;
+  }
+};
+
+const getTxIconBg = (type: string) => {
+  switch (type) {
+    case 'sent':
+      return '#EF444420';
+    case 'received':
+      return '#10B98120';
+    case 'dapp_interaction':
+      return '#8B5CF620';
+    default:
+      return '#F59E0B20'; // warning
+  }
+};
+
+export default function SolanaHistoryScreen({ navigation }: Props) {
   const [isConnected, setIsConnected] = useState(true);
   const [wallet, setWallet] = useState<WalletData | null>(null);
   const [account, setAccount] = useState<WalletAccount | null>(null);
-  const [bearerToken, setBearerToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [listLoading, setListLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [transactions, setTransactions] = useState<any[]>([]);
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
-  const [selectedTx, setSelectedTx] = useState<any>(null);
+  const [transactions, setTransactions] = useState<SolanaTransaction[]>([]);
+  const [selectedTx, setSelectedTx] = useState<SolanaTransaction | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
-
-  // Refund QR modal
-  const [refundQrVisible, setRefundQrVisible] = useState(false);
-  const [refundPaymentId, setRefundPaymentId] = useState<string | null>(null);
-
-  // FILTER STATE
-  const [selectedStatus, setSelectedStatus] = useState<PaymentStatus>(
-    PaymentStatus.All,
+  const [selectedType, setSelectedType] = useState<TransactionType>(
+    TransactionType.All,
   );
-  const [selectedType, setSelectedType] = useState<PaymentType>(
-    PaymentType.All,
-  );
-  const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
   const [typeDropdownOpen, setTypeDropdownOpen] = useState(false);
+
+  // Pagination states
+  const [pagination, setPagination] = useState<PaginationState>({
+    currentPage: 1,
+    allSignatures: [],
+    lastBefore: undefined,
+    hasNextPage: false,
+    hasPrevPage: false,
+  });
 
   const isFocused = useIsFocused();
   const mountedRef = useRef(true);
-
-  useEffect(() => {
-    if (isFocused) loadUserWallet();
-  }, [isFocused]);
 
   // INTERNET MONITOR
   useEffect(() => {
@@ -115,10 +159,6 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
       const acc = data.accounts.find(a => a.id === data.currentAccountId);
       if (acc) {
         setAccount(acc);
-        setBearerToken(null);
-        setTransactions([]);
-        setPage(1);
-        setTotal(0);
       }
     } catch (err) {
       console.log('Wallet load error:', err);
@@ -126,147 +166,372 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
   };
 
   useEffect(() => {
+    if (isFocused) {
+      loadUserWallet();
+    }
+  }, [isFocused]);
+
+  useEffect(() => {
     loadUserWallet();
   }, []);
 
-  const authenticateAndFetch = async (showLoading = false) => {
-    if (!account) return;
-    try {
-      if (showLoading) setLoading(true);
-      const PUBLIC_KEY = account.publicKey;
-      const PRIVATE_KEY_B58 = account.secretKey;
-      const secretKey = bs58.decode(PRIVATE_KEY_B58);
-      const initRes = await fetch(`${BASE_URL}/user/a/initiate-sign-in`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address: PUBLIC_KEY }),
-      });
-      const initJson = await initRes.json();
-      const challenge = initJson?.body?.message;
-      if (!challenge) throw new Error('Challenge missing');
-      const msgBytes = new TextEncoder().encode(challenge);
-      const signature = nacl.sign.detached(msgBytes, secretKey);
-      const sig58 = bs58.encode(signature);
-      const authRes = await fetch(`${BASE_URL}/user/a/sign-in`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address: PUBLIC_KEY, signature: sig58 }),
-      });
-      const authJson = await authRes.json();
-      const token = authJson?.body?.token;
-      if (!token) throw new Error('Token missing');
-      setBearerToken(token);
-      await fetchTransactions(1, token);
-    } catch (err: any) {
-      console.log('Auth error:', err);
-      Toast.show({ type: 'error', text1: 'Authentication failed' });
-    } finally {
-      setLoading(false);
-    }
-  };
-  useEffect(() => {
-    if (account && isConnected) authenticateAndFetch(true);
-  }, [account?.id, isConnected]);
-  const safeParse = (text: string) => {
-    try {
-      return JSON.parse(text);
-    } catch (e) {
-      return null;
-    }
-  };
-  const buildFilterBody = (
-    pg: number,
-    status: PaymentStatus,
-    type: PaymentType,
+  // FETCH SOLANA TRANSACTIONS FOR CURRENT PAGE
+  const fetchSolanaTransactions = async (
+    pageNum: number = 1,
+    reset: boolean = false,
   ) => {
-    const body: any = { page: pg, limit: LIMIT };
-    if (status !== PaymentStatus.All) body.status = status;
-    if (type !== PaymentType.All) body.type = type;
-    return JSON.stringify(body);
-  };
-  const fetchTransactions = async (pg = 1, tokenParam?: string) => {
-    if (!isConnected) {
-      Toast.show({ type: 'error', text1: 'No internet connection' });
+    if (!account || !isConnected) {
       return;
     }
+
     try {
       setListLoading(true);
-      const token = tokenParam || bearerToken;
-      if (!token) throw new Error('Missing token');
-      const body = buildFilterBody(pg, selectedStatus, selectedType);
-      const res = await fetch(`${BASE_URL}/user/p/list`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body,
-      });
-      const text = await res.text();
-      const json = safeParse(text);
-      if (!json || !json.body) {
-        console.log('Invalid response for tx list:', text);
-        throw new Error('Invalid server response');
+      const connection = new Connection(
+        wallet?.network === 'devnet'
+          ? 'https://api.devnet.solana.com'
+          : 'https://api.mainnet-beta.solana.com',
+      );
+      const address = new PublicKey(account.publicKey);
+
+      let allSigs = [...pagination.allSignatures];
+      let currentLastBefore: string | undefined = pagination.lastBefore;
+
+      if (reset) {
+        allSigs = [];
+        currentLastBefore = undefined;
       }
-      const payments = json.body.payments || [];
-      const pagination = json.body.pagination || {};
+
+      const startIdx = (pageNum - 1) * LIMIT;
+      const neededSigs = startIdx + LIMIT;
+
+      // Lazily fetch more signatures as needed for the requested page (cap at 500 for performance)
+      while (allSigs.length < neededSigs && allSigs.length < 500) {
+        const neededMore = neededSigs - allSigs.length;
+        const batchLimit = Math.min(BATCH_SIZE, neededMore);
+        const batch = await connection.getSignaturesForAddress(address, {
+          limit: batchLimit,
+          before: currentLastBefore,
+        });
+
+        if (batch.length === 0) break;
+
+        const sigWithTime = batch
+          .filter(s => s.blockTime !== null)
+          .map(s => ({
+            signature: s.signature,
+            blockTime: s.blockTime || 0,
+          }));
+
+        allSigs = [...allSigs, ...sigWithTime];
+        currentLastBefore = batch[batch.length - 1].signature;
+      }
+
+      const totalFetched = allSigs.length;
+      let effectivePageNum = pageNum;
+      if (startIdx >= totalFetched) {
+        effectivePageNum = Math.ceil(totalFetched / LIMIT) || 1;
+      }
+
+      const pageStartIdx = (effectivePageNum - 1) * LIMIT;
+      const pageSignatures = allSigs.slice(pageStartIdx, pageStartIdx + LIMIT);
+
+      if (pageSignatures.length === 0) {
+        if (!mountedRef.current) return;
+        setTransactions([]);
+        setPagination(prev => ({
+          ...prev,
+          currentPage: 1,
+          allSignatures: [],
+          lastBefore: undefined,
+          hasNextPage: false,
+          hasPrevPage: false,
+        }));
+        return;
+      }
+
+      // Fetch details for the page signatures in parallel
+      const detailPromises = pageSignatures.map(sigInfo =>
+        connection
+          .getTransaction(sigInfo.signature, {
+            maxSupportedTransactionVersion: 0,
+          })
+          .then(tx => {
+            if (!tx) return null;
+            try {
+              const categorization = categorizeTransaction(
+                tx,
+                account.publicKey,
+              );
+              const date = new Date(sigInfo.blockTime * 1000);
+
+              return {
+                signature: sigInfo.signature,
+                blockTime: sigInfo.blockTime,
+                slot: tx.slot,
+                type: categorization.type,
+                subtype: categorization.subtype,
+                details: categorization.details,
+                formatted: {
+                  date: date.toLocaleDateString(),
+                  time: date.toLocaleTimeString(),
+                },
+              } as SolanaTransaction;
+            } catch (err) {
+              console.log(`Error categorizing tx ${sigInfo.signature}:`, err);
+              return null;
+            }
+          })
+          .catch(err => {
+            console.log(`Error fetching tx ${sigInfo.signature}:`, err);
+            return null;
+          }),
+      );
+
+      const rawCategorizedTxs = await Promise.all(detailPromises);
+      let categorizedTxs: SolanaTransaction[] = rawCategorizedTxs.filter(
+        (tx): tx is SolanaTransaction => tx !== null,
+      );
+
+      // Filter by selected type
+      categorizedTxs = categorizedTxs.filter(
+        tx => selectedType === TransactionType.All || tx.type === selectedType,
+      );
+
       if (!mountedRef.current) return;
-      setTransactions(payments);
-      setTotal(pagination.total || 0);
-      setPage(pg);
+
+      setTransactions(categorizedTxs);
+
+      // Peek to check if there are more signatures beyond the fetched ones
+      let hasNextPage = false;
+      if (totalFetched < 500) {
+        const peekBatch = await connection.getSignaturesForAddress(address, {
+          limit: 1,
+          before: currentLastBefore,
+        });
+        hasNextPage = peekBatch.length > 0;
+      }
+
+      setPagination(prev => ({
+        ...prev,
+        currentPage: effectivePageNum,
+        allSignatures: allSigs,
+        lastBefore: currentLastBefore,
+        hasNextPage,
+        hasPrevPage: effectivePageNum > 1,
+      }));
     } catch (err) {
-      console.log('Fetch tx error:', err);
-      Toast.show({ type: 'error', text1: 'Failed to fetch history' });
+      console.log('Fetch Solana transactions error:', err);
+      Toast.show({ type: 'error', text1: 'Failed to fetch transactions' });
     } finally {
       setListLoading(false);
       setRefreshing(false);
     }
   };
+
   useEffect(() => {
-    if (!bearerToken) return;
-    fetchTransactions(1, bearerToken);
-  }, [selectedStatus, selectedType]);
-  const formatDate = (iso?: string) =>
-    iso ? new Date(iso).toLocaleString() : '-';
+    if (account && isConnected) {
+      fetchSolanaTransactions(1);
+      setLoading(false);
+    }
+  }, [account?.id, isConnected]);
+
+  // Reset to page 1 on type filter change (keep signature cache)
+  useEffect(() => {
+    fetchSolanaTransactions(1, false);
+  }, [selectedType]);
+
+  // HANDLE NEXT PAGE
+  const handleNextPage = () => {
+    if (pagination.hasNextPage) {
+      fetchSolanaTransactions(pagination.currentPage + 1, false);
+    }
+  };
+
+  // HANDLE PREVIOUS PAGE
+  const handlePrevPage = () => {
+    if (pagination.hasPrevPage) {
+      fetchSolanaTransactions(pagination.currentPage - 1, false);
+    }
+  };
+
+  // CATEGORIZE TRANSACTION
+  const categorizeTransaction = (tx: any, ownerAddress: string) => {
+    const meta = tx.meta;
+    if (!meta) {
+      return {
+        type: 'unknown',
+        subtype: null,
+        details: { solChange: 0, fee: 0, tokens: [], programs: [] },
+      };
+    }
+
+    const accountKeys = tx.transaction.message.accountKeys;
+    const accountIndex = accountKeys.findIndex(
+      (key: any) => key.toBase58() === ownerAddress,
+    );
+    if (accountIndex === -1) {
+      return {
+        type: 'unknown',
+        subtype: null,
+        details: { solChange: 0, fee: 0, tokens: [], programs: [] },
+      };
+    }
+
+    const preSol = meta.preBalances[accountIndex] || 0;
+    const postSol = meta.postBalances[accountIndex] || 0;
+    const solChange = (postSol - preSol) / LAMPORTS_PER_SOL;
+    const fee = (meta.fee || 0) / LAMPORTS_PER_SOL;
+    const netSolChange = solChange + fee;
+
+    // Extract programs
+    const instructions = tx.transaction.message.instructions;
+    const programIds: string[] = instructions
+      .map((ix: any) => {
+        if ('programIdIndex' in ix) {
+          const progIdx = ix.programIdIndex;
+          const pubkey = accountKeys[progIdx];
+          return pubkey ? pubkey.toBase58() : null;
+        }
+        return null;
+      })
+      .filter((p: string | null): p is string => p !== null);
+
+    const uniquePrograms = Array.from(new Set(programIds));
+
+    // Token balance changes
+    const preTokens = meta.preTokenBalances || [];
+    const postTokens = meta.postTokenBalances || [];
+    const ownerPreTokens = preTokens.filter(
+      (t: any) => t.owner === ownerAddress,
+    );
+    const ownerPostTokens = postTokens.filter(
+      (t: any) => t.owner === ownerAddress,
+    );
+
+    const sentTokens: Token[] = [];
+    const receivedTokens: Token[] = [];
+
+    for (const preToken of ownerPreTokens) {
+      const postToken = ownerPostTokens.find(
+        (t: any) =>
+          t.mint === preToken.mint && t.accountIndex === preToken.accountIndex,
+      );
+      if (postToken) {
+        const preAmount = parseFloat(
+          preToken.uiTokenAmount.uiAmountString || '0',
+        );
+        const postAmount = parseFloat(
+          postToken.uiTokenAmount.uiAmountString || '0',
+        );
+        const change = postAmount - preAmount;
+        if (change < 0) {
+          sentTokens.push({
+            mint: preToken.mint,
+            change: Math.abs(change),
+            isNFT: (preToken.uiTokenAmount.decimals || 0) === 0,
+          });
+        } else if (change > 0) {
+          receivedTokens.push({
+            mint: postToken.mint,
+            change,
+            isNFT: (postToken.uiTokenAmount.decimals || 0) === 0,
+          });
+        }
+      }
+    }
+
+    for (const postToken of ownerPostTokens) {
+      if (
+        !ownerPreTokens.find(
+          (t: any) =>
+            t.mint === postToken.mint &&
+            t.accountIndex === postToken.accountIndex,
+        )
+      ) {
+        const amount = parseFloat(
+          postToken.uiTokenAmount.uiAmountString || '0',
+        );
+        receivedTokens.push({
+          mint: postToken.mint,
+          change: amount,
+          isNFT: (postToken.uiTokenAmount.decimals || 0) === 0,
+        });
+      }
+    }
+
+    // Categorization logic
+    const hasTokenActivity = sentTokens.length > 0 || receivedTokens.length > 0;
+    const isSwapLike =
+      (hasTokenActivity &&
+        sentTokens.length > 0 &&
+        receivedTokens.length > 0) ||
+      uniquePrograms.some(
+        pid =>
+          pid === '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8' ||
+          pid === 'JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4' ||
+          pid === '9W959DqEETiGZocYWCQPaJ6sBmUzgfxXfqGeTEdp3aQP',
+      );
+    const isFeeOnly = Math.abs(netSolChange) < 0.0001 && !hasTokenActivity;
+
+    let type = 'unknown';
+    let subtype = null;
+
+    if (isSwapLike || isFeeOnly) {
+      type = 'dapp_interaction';
+      subtype = isSwapLike ? 'swap' : 'contract_call';
+    } else if (netSolChange > 0 || receivedTokens.length > 0) {
+      type = 'received';
+    } else if (netSolChange < 0 || sentTokens.length > 0) {
+      type = 'sent';
+    }
+
+    const allTokens: Token[] = [
+      ...receivedTokens.map(t => ({ ...t, direction: 'received' })),
+      ...sentTokens.map(t => ({ ...t, direction: 'sent' })),
+    ];
+
+    return {
+      type,
+      subtype,
+      details: {
+        solChange,
+        fee,
+        programs: uniquePrograms,
+        tokens: allTokens,
+      },
+    };
+  };
+
+  // FILTER TRANSACTIONS
+  // Note: Filtering is now handled inside fetchSolanaTransactions for the current page batch
+
+  // FORMAT FUNCTIONS
   const truncate = (s?: string, len = 6) =>
     s
       ? `${s.slice(0, Math.max(2, Math.floor(len / 2)))}...${s.slice(
           -Math.max(2, Math.floor(len / 2)),
         )}`
       : '-';
+
   const copyToClipboard = (text: string) => {
     Clipboard.setString(text);
     Toast.show({ type: 'success', text1: 'Copied to clipboard' });
   };
-  const statusColor = (status?: string) => {
-    const s = (status || '').toLowerCase();
-    if (s === 'completed') return '#10B981';
-    if (s === 'pending' || s === 'processing') return '#F59E0B';
-    if (s === 'failed') return '#EF4444';
-    if (s === 'refunded') return '#3B82F6';
-    if (s === 'partial_refund') return '#8B5CF6';
+
+  const typeColor = (type?: string) => {
+    const t = (type || '').toLowerCase();
+    if (t === 'sent') return '#EF4444';
+    if (t === 'received') return '#10B981';
+    if (t === 'dapp_interaction') return '#3B82F6';
     return '#7C88FF';
   };
 
-  const getRewardTextColor = (status?: string) => {
-    const s = (status || '').toLowerCase();
-    if (s === 'completed') return 'text-green-400';
-    if (s === 'refunded' || s === 'partial_refund') return 'text-purple-400';
-    return 'text-gray-500'; // for pending/failed/etc
-  };
+  // RENDER ITEM
+  const renderItem = ({ item }: { item: SolanaTransaction }) => {
+    const { signature, type, details, formatted } = item;
+    const solAmount = Math.abs(details.solChange);
+    const hasTokens = details.tokens && details.tokens.length > 0;
 
-  // ===========================================
-  // RENDER ITEM WITH REFUND BUTTON
-  // ===========================================
-  const renderItem = ({ item }: any) => {
-    const tx = item.transaction?.tx || {};
-    const processed = item.transaction?.processed || {};
-    const hash = tx.hash || '';
-    const depositAddr = tx.deposit_address || '';
-    const meaAmount = processed.mea_amount ?? item.params?.mea_amount ?? 0;
-    const status = item.status || 'unknown';
-    const type = item.type || '';
-    const createdAt = item.createdAt;
     return (
       <TouchableOpacity
         onPress={() => {
@@ -276,104 +541,110 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
         className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl mx-4 my-1 p-3 shadow-md border border-gray-700"
         activeOpacity={0.92}
       >
-        {/* Top row */}
-        <View className="flex-row items-start">
-          <View style={{ flex: 1 }}>
-            <View className="flex-row justify-between items-start">
-              {/* Left side */}
-              <View style={{ flex: 1, paddingRight: 8 }}>
-                <View className="flex-row items-center mt-1">
-                  <Text className="text-gray-300 text-xs mr-2">{type}</Text>
-                  {hash ? (
-                    <TouchableOpacity
-                      onPress={() =>
-                        Linking.openURL(
-                          `https://explorer.solana.com/tx/${hash}?cluster=mainnet-beta`,
-                        )
-                      }
-                      className="flex-row items-center"
-                      activeOpacity={0.7}
-                    >
-                      <Text className="text-blue-400 text-xs mr-1">
-                        {truncate(hash, 8)}
-                      </Text>
-                      <OpenLinkIcon width={12} height={12} />
-                    </TouchableOpacity>
-                  ) : null}
-                </View>
-                <Text className="text-gray-400 text-xs mt-2">
-                  Deposit: {truncate(depositAddr, 8)}
-                </Text>
-                <Text className="text-gray-500 text-xs mt-1">
-                  {tx.time ? formatDate(tx.time) : formatDate(createdAt)}
-                </Text>
-              </View>
-              {/* Amount + Status */}
-              <View className="items-end">
-                <View
-                  className="rounded-lg px-3 py-1 mb-2"
-                  style={{
-                    backgroundColor: 'rgba(151,7,181,0.08)',
-                    borderWidth: 1,
-                    borderColor: 'rgba(151,7,181,0.16)',
-                  }}
-                >
-                  <Text className="text-[#9707B5] font-semibold text-sm">
-                    {meaAmount} MEA
-                  </Text>
-                </View>
-                <View
-                  className="rounded-full px-3 py-1"
-                  style={{ backgroundColor: `${statusColor(status)}22` }}
-                >
-                  <Text
-                    style={{
-                      color: statusColor(status),
-                      fontWeight: '700',
-                      fontSize: 12,
-                    }}
-                  >
-                    {status}
-                  </Text>
-                </View>
-              </View>
+        <View className="flex-row items-start justify-between">
+          {/* LEFT SIDE */}
+          <View className="flex-row items-start" style={{ flex: 1 }}>
+            {/* SVG ICON */}
+            <View
+              className="mr-3 mt-1 rounded-full items-center justify-center"
+              style={{
+                width: 50,
+                height: 50,
+                backgroundColor: getTxIconBg(type),
+              }}
+            >
+              {(() => {
+                const Icon = getTxIcon(type);
+                return <Icon width={35} height={35} opacity={0.6} />;
+              })()}
             </View>
-            {/* Payment ID + Refund button */}
-            <View className="flex-row items-center justify-between mt-3">
+
+            {/* TEXT CONTENT */}
+            <View style={{ flex: 1 }}>
+              <View className="flex-row items-center mt-1">
+                <Text className="text-gray-300 text-xs mr-2 font-semibold">
+                  {type.toUpperCase()}
+                </Text>
+              </View>
+
               <TouchableOpacity
-                onPress={() => copyToClipboard(item._id)}
-                className="flex-row items-center"
+                onPress={() =>
+                  Linking.openURL(
+                    `https://explorer.solana.com/tx/${signature}?cluster=mainnet-beta`,
+                  )
+                }
+                className="flex-row items-center mt-2"
+                activeOpacity={0.7}
               >
-                <Text
-                  className="text-white font-normal text-sm"
-                  numberOfLines={1}
-                >
-                  Payment ID: {item._id}{' '}
+                <Text className="text-blue-400 text-xs mr-1">
+                  {truncate(signature, 8)}
                 </Text>
-                <CopyIcon width={14} height={14} />
+                <OpenLinkIcon width={12} height={12} />
               </TouchableOpacity>
+
+              <Text className="text-gray-500 text-xs mt-2">
+                {formatted?.date} {formatted?.time}
+              </Text>
             </View>
+          </View>
+
+          {/* RIGHT SIDE */}
+          <View className="items-end">
+            {solAmount > 0 && (
+              <View
+                className="rounded-lg px-3 py-1 mb-2"
+                style={{
+                  backgroundColor: '#9707B5',
+                  borderWidth: 1,
+                  borderColor: '#9702B5',
+                }}
+              >
+                <Text className="text-white font-semibold text-sm">
+                  {solAmount.toFixed(4)} SOL
+                </Text>
+              </View>
+            )}
+
+            <View
+              className="rounded-full px-3 py-1"
+              style={{ backgroundColor: `${typeColor(type)}22` }}
+            >
+              <Text
+                style={{
+                  color: typeColor(type),
+                  fontWeight: '700',
+                  fontSize: 12,
+                }}
+              >
+                {type === 'dapp_interaction' ? 'dApp' : type}
+              </Text>
+            </View>
+
+            {hasTokens && (
+              <Text className="text-gray-400 text-xs mt-2">
+                {details.tokens.length} token
+                {details.tokens.length !== 1 ? 's' : ''}
+              </Text>
+            )}
           </View>
         </View>
       </TouchableOpacity>
     );
   };
+
   // ===============================================
   // PAGINATION BAR
   // ===============================================
   const PaginationBar = () => {
-    const canPrev = page > 1;
-    const canNext = page * LIMIT < total;
+    const canPrev = pagination.hasPrevPage;
+    const canNext = pagination.hasNextPage;
+
     return (
       <View className="bg-black p-4">
         <View className="flex-row justify-between items-center px-4">
           <TouchableOpacity
             disabled={!canPrev}
-            onPress={() => {
-              const np = Math.max(1, page - 1);
-              setPage(np);
-              fetchTransactions(np);
-            }}
+            onPress={handlePrevPage}
             className={`px-4 py-2 rounded-lg ${
               canPrev ? 'border-[#9707B5]' : 'border-gray-700'
             } border`}
@@ -385,17 +656,13 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
             </Text>
           </TouchableOpacity>
           <View className="flex-row items-center space-x-4">
-            <Text className="text-gray-300 text-sm">Page {page}</Text>
-            <Text className="text-gray-400 text-sm">·</Text>
-            <Text className="text-gray-300 text-sm">{total} total</Text>
+            <Text className="text-gray-300 text-sm">
+              Page {pagination.currentPage}
+            </Text>
           </View>
           <TouchableOpacity
             disabled={!canNext}
-            onPress={() => {
-              const np = page + 1;
-              setPage(np);
-              fetchTransactions(np);
-            }}
+            onPress={handleNextPage}
             className={`px-4 py-2 rounded-lg ${
               canNext ? 'border-[#9707B5]' : 'border-gray-700'
             } border`}
@@ -410,104 +677,8 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
       </View>
     );
   };
-  // =======================================================
-  // REFUND QR POPUP
-  // =======================================================
-  const RefundQRModal = () => (
-    <Modal visible={refundQrVisible} transparent animationType="fade">
-      <View className="flex-1 bg-black/70 justify-center items-center">
-        <View className="bg-gray-900 p-6 rounded-2xl items-center w-80">
-          <Text className="text-white text-lg font-semibold mb-4">
-            Refund Request
-          </Text>
-          <View className="bg-white p-4 rounded-xl">
-            <QRCode
-              value={`${refundPaymentId}`}
-              size={220}
-              color="black"
-              backgroundColor="white"
-            />
-          </View>
-          <Text className="text-gray-400 text-sm mt-4 text-center">
-            Scan to refund payment ID:
-          </Text>
-          <Text className="text-white mt-1 font-medium">{refundPaymentId}</Text>
-          <TouchableOpacity
-            onPress={() => setRefundQrVisible(false)}
-            className="bg-[#9707B5] rounded-xl py-3 px-6 mt-6"
-          >
-            <Text className="text-white font-semibold">Close</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
-  );
-  // =======================================================
-  // STATUS & TYPE DROPDOWNS (sliding modal style)
-  // =======================================================
-  const StatusDropdown = () => {
-    return (
-      <Modal visible={statusDropdownOpen} transparent animationType="slide">
-        <TouchableOpacity
-          style={styles.overlay}
-          activeOpacity={1}
-          onPress={() => setStatusDropdownOpen(false)}
-        >
-          <View style={styles.dropdownCardContainer}>
-            <View className="bg-gray-900 border border-gray-700 shadow-2xl">
-              <View className="px-4 py-3 bg-gray-800 border-b border-gray-700">
-                <Text className="text-white font-semibold text-base">
-                  Filter by Status
-                </Text>
-              </View>
-              <View className="p-1 max-h-[400]">
-                {Object.values(PaymentStatus).map((s: any) => {
-                  // display capitalization for 'All' and enums
-                  const label =
-                    typeof s === 'string'
-                      ? s === 'All'
-                        ? 'All'
-                        : s
-                            .split('_')
-                            .map(
-                              (part: string) =>
-                                part.charAt(0).toUpperCase() + part.slice(1),
-                            )
-                            .join(' ')
-                      : String(s);
-                  return (
-                    <TouchableOpacity
-                      key={s}
-                      onPress={() => {
-                        setSelectedStatus(s);
-                        setStatusDropdownOpen(false);
-                      }}
-                      className={`px-4 py-4 border-b border-gray-800 last:border-b-0`}
-                    >
-                      <View className="flex-row items-center justify-between">
-                        <Text
-                          className={`text-sm font-medium ${
-                            s === selectedStatus
-                              ? 'text-[#9707B5] font-semibold'
-                              : 'text-gray-300'
-                          }`}
-                        >
-                          {label}
-                        </Text>
-                        {s === selectedStatus && (
-                          <View className="w-2 h-2 bg-[#9707B5] rounded-full" />
-                        )}
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
-          </View>
-        </TouchableOpacity>
-      </Modal>
-    );
-  };
+
+  // TYPE DROPDOWN
   const TypeDropdown = () => {
     return (
       <Modal visible={typeDropdownOpen} transparent animationType="slide">
@@ -524,20 +695,14 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
                 </Text>
               </View>
               <View className="p-1 max-h-[320]">
-                {Object.values(PaymentType).map((t: any) => {
+                {Object.values(TransactionType).map((t: any) => {
                   const label =
-                    typeof t === 'string'
-                      ? t === 'All'
-                        ? 'All'
-                        : // show more readable label for snake_case
-                          t
-                            .split('_')
-                            .map(
-                              (part: string) =>
-                                part.charAt(0).toUpperCase() + part.slice(1),
-                            )
-                            .join(' ')
-                      : String(t);
+                    t === 'All'
+                      ? 'All'
+                      : t === 'dapp_interaction'
+                      ? 'dApp'
+                      : t.charAt(0).toUpperCase() + t.slice(1);
+
                   return (
                     <TouchableOpacity
                       key={t}
@@ -545,7 +710,7 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
                         setSelectedType(t);
                         setTypeDropdownOpen(false);
                       }}
-                      className={`px-4 py-4 border-b border-gray-800 last:border-b-0`}
+                      className="px-4 py-4 border-b border-gray-800 last:border-b-0"
                     >
                       <View className="flex-row items-center justify-between">
                         <Text
@@ -571,23 +736,25 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
       </Modal>
     );
   };
-  // =======================================================
-  // DETAIL MODAL (WITH REFUND BUTTON)
-  // =======================================================
+
+  // DETAIL MODAL
   const DetailRow = ({ label, value, small }: any) => (
     <View className="mb-3">
       <Text className="text-gray-400 text-xs">{label}</Text>
-      <Text className={`text-white ${small ? 'text-sm' : 'text-base'}`}>
+      <Text
+        className={`text-white ${small ? 'text-sm' : 'text-base'}`}
+        numberOfLines={2}
+      >
         {value ?? '-'}
       </Text>
     </View>
   );
+
   const renderModal = () => {
     if (!selectedTx) return null;
-    const tx = selectedTx.transaction?.tx || {};
-    const processed = selectedTx.transaction?.processed || {};
-    const reward = selectedTx.transaction?.reward || {};
-    const params = selectedTx.params || {};
+
+    const { signature, type, details, formatted, subtype, slot } = selectedTx;
+
     return (
       <Modal visible={modalVisible} animationType="slide" transparent>
         <View className="flex-1 bg-black/70 justify-end">
@@ -604,95 +771,47 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
                 <Text className="text-gray-400">Close</Text>
               </TouchableOpacity>
             </View>
+
             {/* Scroll content */}
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              style={{ paddingBottom: 40 }}
-            >
+            <ScrollView showsVerticalScrollIndicator={false}>
               {/* Summary Block */}
               <View className="bg-gradient-to-r from-gray-800 to-gray-700 rounded-xl p-4 mb-4 border border-gray-700">
-                <View className="flex-row justify-between items-center">
+                <View className="flex-row justify-between items-center mb-3">
                   <View>
-                    <Text className="text-gray-300 text-xs">Payment ID</Text>
+                    <Text className="text-gray-300 text-xs">
+                      Transaction Type
+                    </Text>
                     <Text className="text-white font-semibold">
-                      {selectedTx._id}
+                      {type === 'dapp_interaction' ? 'dApp' : type}
+                      {subtype && ` (${subtype})`}
                     </Text>
                   </View>
                   <View className="items-end">
-                    <Text className="text-gray-300 text-xs">Status</Text>
-                    <View
-                      className="rounded-full px-3 py-1 mt-1"
-                      style={{
-                        backgroundColor: `${statusColor(selectedTx.status)}22`,
-                      }}
+                    <Text className="text-gray-300 text-xs">SOL Change</Text>
+                    <Text
+                      className={`font-bold text-lg ${
+                        details.solChange > 0
+                          ? 'text-green-400'
+                          : details.solChange < 0
+                          ? 'text-red-400'
+                          : 'text-gray-400'
+                      }`}
                     >
-                      <Text
-                        style={{
-                          color: statusColor(selectedTx.status),
-                          fontWeight: '700',
-                        }}
-                      >
-                        {selectedTx.status}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-                <View className="flex-row justify-between items-end mt-3">
-                  <View>
-                    {/* ---------- DETERMINE REWARD AMOUNT COLOR ---------- */}
-                    {(() => {
-                      const s = selectedTx.status;
-                      let color = 'text-gray-400'; // default
-
-                      if (s === 'completed') color = 'text-green-400';
-                      else if (s === 'pending' || s === 'processing')
-                        color = 'text-yellow-400';
-                      else if (
-                        s === 'failed' ||
-                        s === 'refunded' ||
-                        s === 'partial_refund'
-                      )
-                        color = 'text-red-400';
-
-                      return (
-                        <>
-                          <Text className="text-gray-300 text-xs">
-                            Reward (USDT)
-                          </Text>
-                          <Text className={`${color} font-bold text-lg`}>
-                            {reward.usdt_amount ?? 0} USDT
-                          </Text>
-                        </>
-                      );
-                    })()}
-
-                    {/* ---------- TAG BELOW AMOUNT ---------- */}
-                    {(selectedTx.status === 'refunded' ||
-                      selectedTx.status === 'partial_refund') && (
-                      <View className="bg-red-900/30 border border-red-600 rounded-md mt-1 px-2 py-1">
-                        <Text className="text-red-400 text-xs font-medium">
-                          Cancelled
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-
-                  <View className="items-end">
-                    <Text className="text-gray-300 text-xs">Processed MEA</Text>
-                    <Text className="text-yellow-300 font-semibold text-lg">
-                      {processed.mea_amount ?? params.mea_amount ?? 0} MEA
+                      {details.solChange > 0 ? '+' : ''}
+                      {details.solChange.toFixed(6)} SOL
                     </Text>
                   </View>
                 </View>
               </View>
-              {/* HASH */}
-              <DetailRow label="Hash" value={tx.hash} small />
-              {tx.hash ? (
+
+              {/* Signature */}
+              <DetailRow label="Signature" value={signature} small />
+              {signature && (
                 <View className="flex-row items-center space-x-3 mb-3">
                   <TouchableOpacity
                     onPress={() =>
                       Linking.openURL(
-                        `https://explorer.solana.com/tx/${tx.hash}?cluster=mainnet-beta`,
+                        `https://explorer.solana.com/tx/${signature}?cluster=mainnet-beta`,
                       )
                     }
                     className="flex-row items-center"
@@ -703,185 +822,124 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    onPress={() => copyToClipboard(tx.hash)}
+                    onPress={() => copyToClipboard(signature)}
                     className="flex-row items-center"
                   >
                     <CopyIcon width={14} height={14} />
-                    <Text className="text-gray-400 text-sm ml-2">
-                      Copy hash
-                    </Text>
+                    <Text className="text-gray-400 text-sm ml-2">Copy</Text>
                   </TouchableOpacity>
                 </View>
-              ) : null}
-              <DetailRow
-                label="Deposit Address"
-                value={tx.deposit_address}
-                small
-              />
-              <DetailRow label="User Address" value={tx.user_address} small />
+              )}
+
+              {/* Transaction Info */}
               <View className="mb-4">
-                <Text className="text-gray-400 text-sm mb-2">Amounts</Text>
+                <Text className="text-white font-semibold mb-2">
+                  Transaction Info
+                </Text>
+                <DetailRow label="Slot" value={slot.toString()} />
                 <DetailRow
-                  label="MEA (processed)"
-                  value={`${processed.mea_amount ?? 0} MEA`}
+                  label="Fee"
+                  value={`${details.fee.toFixed(6)} SOL`}
                 />
                 <DetailRow
-                  label="MEA Price"
-                  value={processed.mea_price ?? '-'}
-                />
-                <DetailRow
-                  label="Params: MEA amount"
-                  value={params.mea_amount ?? '-'}
-                />
-                <DetailRow
-                  label="Params: USDT amount"
-                  value={params.usdt_amount ?? '-'}
+                  label="Date & Time"
+                  value={`${formatted?.date} ${formatted?.time}`}
                 />
               </View>
-              {/* Conditional Section: Reward or Refunds */}
-              {selectedTx.status === 'completed' ? (
-                <View
-                  className="mb-4 p-3 rounded-xl"
-                  style={{ backgroundColor: '#041014' }}
-                >
-                  <View className="flex-row justify-between items-center mb-2">
-                    <Text className="text-white font-semibold">Reward</Text>
-                    <Text className="text-green-400 font-bold">
-                      {reward.usdt_amount ?? 0} USDT
-                    </Text>
-                  </View>
-                  <DetailRow
-                    label="Reward Ratio"
-                    value={reward.reward_ratio ?? '-'}
-                  />
-                  <DetailRow
-                    label="Instant Swap"
-                    value={params.instant_swap ? 'Yes' : 'No'}
-                  />
-                </View>
-              ) : selectedTx.status === 'refunded' ||
-                selectedTx.status === 'partial_refund' ? (
+
+              {/* Programs */}
+              {details.programs && details.programs.length > 0 && (
                 <View className="mb-4">
-                  <Text className="text-white font-semibold mb-3">Refunds</Text>
-                  {selectedTx.refunds.map((refund: any, index: number) => (
-                    <View
-                      key={refund._id}
-                      className="bg-[#041014] p-3 rounded-xl mb-3"
-                    >
-                      <Text className="text-white font-semibold mb-2">
-                        Refund #{index + 1}
-                      </Text>
-                      <DetailRow
-                        label="Created at"
-                        value={formatDate(refund.createdAt)}
-                      />
-                      <DetailRow
-                        label="MEA Amount (params)"
-                        value={refund.params.mea_amount}
-                      />
-                      <DetailRow
-                        label="USDT Amount (params)"
-                        value={refund.params.usdt_amount}
-                      />
-                      <DetailRow label="Status" value={refund.status} />
-                      {/* Transaction */}
-                      <Text className="text-gray-400 text-sm mt-2 mb-2">
-                        Transaction
-                      </Text>
-                      <DetailRow
-                        label="MEA Amount (processed)"
-                        value={refund.transaction?.processed?.mea_amount ?? '-'}
-                      />
-                      <DetailRow
-                        label="MEA Price"
-                        value={refund.transaction?.processed?.mea_price ?? '-'}
-                      />
-                      <DetailRow
-                        label="Hash"
-                        value={refund.transaction?.tx?.hash ?? '-'}
-                        small
-                      />
-                      {refund.transaction?.tx?.hash ? (
-                        <View className="flex-row items-center space-x-3 mb-3">
-                          <TouchableOpacity
-                            onPress={() =>
-                              Linking.openURL(
-                                `https://explorer.solana.com/tx/${refund.transaction.tx.hash}?cluster=mainnet-beta`,
-                              )
-                            }
-                            className="flex-row items-center"
-                          >
-                            <OpenLinkIcon width={14} height={14} />
-                            <Text className="text-blue-400 text-sm ml-2">
-                              Open in Explorer
-                            </Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            onPress={() =>
-                              copyToClipboard(refund.transaction.tx.hash)
-                            }
-                            className="flex-row items-center"
-                          >
-                            <CopyIcon width={14} height={14} />
-                            <Text className="text-gray-400 text-sm ml-2">
-                              Copy hash
-                            </Text>
-                          </TouchableOpacity>
-                        </View>
-                      ) : null}
-                      <DetailRow
-                        label="Tx Time"
-                        value={formatDate(refund.transaction?.tx?.time)}
-                      />
+                  <Text className="text-white font-semibold mb-2">
+                    Programs Involved
+                  </Text>
+                  {details.programs.map((prog, idx) => (
+                    <View key={idx} className="mb-2">
+                      <TouchableOpacity
+                        onPress={() =>
+                          Linking.openURL(
+                            `https://explorer.solana.com/address/${prog}?cluster=mainnet-beta`,
+                          )
+                        }
+                        className="flex-row items-center"
+                      >
+                        <Text className="text-blue-400 text-xs mr-2 flex-1">
+                          {prog}
+                        </Text>
+                        <OpenLinkIcon width={12} height={12} />
+                      </TouchableOpacity>
                     </View>
                   ))}
                 </View>
-              ) : null}
-              {/* Timestamps */}
-              <View className="mb-6">
-                <DetailRow
-                  label="Created at"
-                  value={formatDate(selectedTx.createdAt)}
-                />
-                <DetailRow
-                  label="Updated at"
-                  value={formatDate(selectedTx.updatedAt)}
-                />
-                <DetailRow
-                  label="Tx time"
-                  value={tx.time ? formatDate(tx.time) : '-'}
-                />
-              </View>
-              {/* Footer Buttons: Close + Refund */}
-              <View className="flex-row justify-between mt-4">
-                {/* Close */}
-                <TouchableOpacity
-                  onPress={() => setModalVisible(false)}
-                  className="flex-1 bg-gray-700 rounded-xl py-3 items-center mr-3"
-                >
-                  <Text className="text-white font-semibold">Close</Text>
-                </TouchableOpacity>
-                {/* Refund (only if completed or partial_refund) */}
-                {(selectedTx.status === 'completed' ||
-                  selectedTx.status === 'partial_refund') && (
-                  <TouchableOpacity
-                    onPress={() => {
-                      setRefundPaymentId(selectedTx._id);
-                      setRefundQrVisible(true);
-                    }}
-                    className="flex-1 bg-[#9707B5] rounded-xl py-3 items-center ml-3"
-                  >
-                    <Text className="text-white font-semibold">Refund</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+              )}
+
+              {/* Tokens */}
+              {details.tokens && details.tokens.length > 0 && (
+                <View className="mb-4">
+                  <Text className="text-white font-semibold mb-2">
+                    Token Changes
+                  </Text>
+                  {details.tokens.map((token, idx) => (
+                    <View
+                      key={idx}
+                      className="bg-gray-800 rounded-lg p-3 mb-2 border border-gray-700"
+                    >
+                      <View className="flex-row justify-between items-start mb-2">
+                        <View>
+                          <Text className="text-gray-300 text-xs">
+                            Mint Address
+                          </Text>
+                          <TouchableOpacity
+                            onPress={() =>
+                              Linking.openURL(
+                                `https://explorer.solana.com/address/${token.mint}?cluster=mainnet-beta`,
+                              )
+                            }
+                            className="flex-row items-center mt-1"
+                          >
+                            <Text className="text-blue-400 text-xs mr-1">
+                              {truncate(token.mint, 8)}
+                            </Text>
+                            <OpenLinkIcon width={12} height={12} />
+                          </TouchableOpacity>
+                        </View>
+                        <Text
+                          className={`font-bold ${
+                            token.direction === 'received'
+                              ? 'text-green-400'
+                              : 'text-red-400'
+                          }`}
+                        >
+                          {token.direction === 'received' ? '+' : '-'}
+                          {token.change.toFixed(6)}
+                          {token.isNFT ? ' NFT' : ''}
+                        </Text>
+                      </View>
+                      {token.isNFT && (
+                        <View className="bg-yellow-900/20 rounded px-2 py-1 mt-1">
+                          <Text className="text-yellow-400 text-xs">NFT</Text>
+                        </View>
+                      )}
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {/* Footer */}
+              <TouchableOpacity
+                onPress={() => setModalVisible(false)}
+                className="bg-[#9707B5] rounded-xl py-3 items-center mt-4 mb-4"
+              >
+                <Text className="text-white font-semibold">Close</Text>
+              </TouchableOpacity>
             </ScrollView>
           </View>
         </View>
       </Modal>
     );
   };
-  // OFFLINE page
+
+  // OFFLINE PAGE
   if (!isConnected) {
     return (
       <View className="flex-1 bg-black">
@@ -895,93 +953,103 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
       </View>
     );
   }
-  // LOADING screen
+
+  // LOADING SCREEN
   if (loading) {
     return (
       <View className="flex-1 bg-black justify-center items-center">
         <ActivityIndicator size="large" color="#9707B5" />
-        <Text className="text-white mt-3">Loading history...</Text>
+        <Text className="text-white mt-3">Loading transactions...</Text>
       </View>
     );
   }
+
   return (
     <SafeAreaView className="flex-1 bg-black">
-      {/* Header */}
-      <View className="px-5 pt-5 flex-row bg-gray-900 items-center space-x-3">
-        <TouchableOpacity
-          onPress={() => navigation.navigate('Accounts')}
-          className="w-10 h-10 rounded-full overflow-hidden justify-center items-center"
-        >
-          <Image
-            source={
-              account?.imageUri ? { uri: account.imageUri } : UsernameFrame
-            }
-            className="w-full h-full"
-            resizeMode="cover"
-          />
-        </TouchableOpacity>
-        <View className="flex-1">
-          <Text className="text-white font-semibold text-base">
-            {account?.name || 'My Wallet'}
-          </Text>
+      {/* Header + Filter Row */}
+      <View className="px-5 pt-5 pb-3 flex-row bg-gray-900 items-center justify-between">
+        {/* LEFT: Header */}
+        <View className="flex-row items-center flex-1 space-x-3">
           <TouchableOpacity
-            onPress={() => Clipboard.setString(account?.publicKey || '')}
-            className="flex-row items-center gap-1"
+            onPress={() => navigation.navigate('Accounts')}
+            className="w-10 h-10 rounded-full overflow-hidden justify-center items-center"
           >
-            <Text className="text-gray-400 text-xs">
-              {account?.publicKey
-                ? `${account.publicKey.slice(
-                    0,
-                    6,
-                  )} **** ${account.publicKey.slice(-6)}`
-                : 'No Account'}
-            </Text>
-            <CopyIcon width={14} height={14} />
+            <Image
+              source={
+                account?.imageUri ? { uri: account.imageUri } : UsernameFrame
+              }
+              className="w-full h-full"
+              resizeMode="cover"
+            />
           </TouchableOpacity>
+
+          <View className="flex-1">
+            <Text className="text-white font-semibold text-base">
+              {account?.name || 'My Wallet'}
+            </Text>
+
+            <TouchableOpacity
+              onPress={() => Clipboard.setString(account?.publicKey || '')}
+              className="flex-row items-center gap-1"
+            >
+              <Text className="text-gray-400 text-xs">
+                {account?.publicKey
+                  ? `${account.publicKey.slice(
+                      0,
+                      6,
+                    )} **** ${account.publicKey.slice(-6)}`
+                  : 'No Account'}
+              </Text>
+              <CopyIcon width={14} height={14} />
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
-      {/* Filters */}
-      <View className="flex-row px-4 py-3 bg-gray-900 items-center space-x-3">
-        <TouchableOpacity
-          onPress={() => setStatusDropdownOpen(true)}
-          className="flex-1 rounded-xl border border-gray-700 px-3 py-2"
-        >
-          <Text className="text-gray-200 text-sm">
-            Status:{' '}
-            <Text className="text-white font-semibold">{selectedStatus}</Text>
-          </Text>
-        </TouchableOpacity>
+
+        {/* RIGHT: Filter */}
         <TouchableOpacity
           onPress={() => setTypeDropdownOpen(true)}
-          className="flex-1 rounded-xl border border-gray-700 px-3 py-2"
+          className="ml-3 rounded-xl border border-gray-700 px-3 py-2"
         >
           <Text className="text-gray-200 text-sm">
             Type:{' '}
-            <Text className="text-white font-semibold">{selectedType}</Text>
+            <Text className="text-white font-semibold">
+              {selectedType === TransactionType.All
+                ? 'All'
+                : selectedType === TransactionType.DappInteraction
+                ? 'dApp'
+                : selectedType.charAt(0).toUpperCase() + selectedType.slice(1)}
+            </Text>
           </Text>
         </TouchableOpacity>
       </View>
+
       {/* Dropdown modals */}
-      {StatusDropdown()}
       {TypeDropdown()}
+
       {/* List */}
       <View style={{ flex: 1, paddingBottom: 0 }}>
         {!listLoading ? (
           <FlatList
             data={transactions}
-            keyExtractor={item => item._id}
+            keyExtractor={item => item.signature}
             renderItem={renderItem}
             refreshing={refreshing}
             onRefresh={() => {
               setRefreshing(true);
-              fetchTransactions(1);
+              fetchSolanaTransactions(1, true);
             }}
             ListEmptyComponent={
               <View className="items-center justify-center mt-16">
-                <Text className="text-gray-400">No transactions found</Text>
+                <Text className="text-gray-400">
+                  {selectedType === TransactionType.All
+                    ? 'No transactions found'
+                    : `No ${selectedType} transactions found`}
+                </Text>
               </View>
             }
-            ListFooterComponent={total > 0 ? <PaginationBar /> : null}
+            ListFooterComponent={
+              pagination.allSignatures.length > 0 ? <PaginationBar /> : null
+            }
           />
         ) : (
           <View className="flex-1 justify-center items-center">
@@ -990,14 +1058,15 @@ export default function TransactionHistoryScreen({ navigation }: Props) {
           </View>
         )}
       </View>
+
       {/* Detail Modal */}
       {renderModal()}
-      {/* Refund QR Modal */}
-      {RefundQRModal()}
+
       <BottomNavBar active="History" />
     </SafeAreaView>
   );
 }
+
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,

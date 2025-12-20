@@ -13,6 +13,7 @@ export type RootStackParamList = {
   TransactionHistory: {
     accountId: string;
   };
+  TransactionHistoryStore: undefined;
   TokenData: {
     mintAddress: string;
   };
