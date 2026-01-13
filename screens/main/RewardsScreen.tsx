@@ -32,20 +32,6 @@ import { getRpcUrl } from '../../utils/common';
 type Props = NativeStackScreenProps<RootStackParamList, 'Rewards'>;
 const BASE_URL = 'https://api-platform.pingpay.info';
 
-// utility: convert seconds (global) to structured time (kept as-is)
-const convertSeconds = (sec: number) => {
-  let seconds = sec;
-  const months = Math.floor(seconds / (30 * 24 * 60 * 60)); // 30-day month approx
-  seconds %= 30 * 24 * 60 * 60;
-  const days = Math.floor(seconds / (24 * 60 * 60));
-  seconds %= 24 * 60 * 60;
-  const hours = Math.floor(seconds / 3600);
-  seconds %= 3600;
-  const minutes = Math.floor(seconds / 60);
-  seconds %= 60;
-  return { months, days, hours, minutes, seconds };
-};
-
 // utility: convert milliseconds remaining to DD HH MM SS object
 const msToDhms = (ms: number) => {
   if (ms <= 0) return { days: 0, hours: 0, minutes: 0, seconds: 0 };
@@ -280,6 +266,14 @@ export default function RewardsScreen({ navigation }: Props) {
    * Claim flow
    * ======================== */
   const handleClaim = async () => {
+    if (!wallet || wallet?.network === 'devnet') {
+      Toast.show({
+        type: 'error',
+        text1: 'Please change the network to Mainnet',
+      });
+      return;
+    }
+
     const numAmount = Number(claimAmount);
     if (isNaN(numAmount) || numAmount <= 0) {
       Toast.show({
@@ -320,6 +314,13 @@ export default function RewardsScreen({ navigation }: Props) {
   };
 
   const signAndSendTransaction = async (encodedTx: string) => {
+    if (!wallet || wallet?.network === 'devnet') {
+      Toast.show({
+        type: 'error',
+        text1: 'Please change the network to Mainnet',
+      });
+      return;
+    }
     try {
       if (wallet) {
         const PRIVATE_KEY_B58 = account?.secretKey!;
@@ -344,7 +345,7 @@ export default function RewardsScreen({ navigation }: Props) {
    * ======================== */
   const openExplorer = (hash: string) => {
     if (!hash) return;
-    const url = `https://explorer.solana.com/tx/${hash}?cluster=mainnet-beta`;
+    const url = `https://explorer.solana.com/tx/${hash}`;
     Linking.openURL(url);
   };
 

@@ -161,9 +161,6 @@ export default function ConfirmTransactionScreen({ route, navigation }: Props) {
           if (!ix0) throw new Error('Instruction[0] missing.');
 
           const data = ix0.data;
-          if (data.length < 100)
-            throw new Error('Instruction data too short for processPayment.');
-
           // discriminator
           const discBytes = data.slice(0, 8);
           const disc = bs58.encode(discBytes);

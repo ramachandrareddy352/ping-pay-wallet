@@ -259,6 +259,14 @@ const MerchantPaymentScreen = ({ navigation, route }: Props) => {
   };
 
   const handlePay = async () => {
+    if (!wallet || wallet?.network === 'devnet') {
+      Toast.show({
+        type: 'error',
+        text1: 'Please change the network to Mainnet',
+      });
+      return;
+    }
+
     if (!canConfirm || !currentAccount || !merchantDetails?.slug) {
       Toast.show({
         type: 'error',
@@ -474,7 +482,7 @@ const MerchantPaymentScreen = ({ navigation, route }: Props) => {
             <TouchableOpacity
               onPress={() =>
                 Linking.openURL(
-                  `https://solscan.io/tx/${txHash}${
+                  `https://explorer.solana.com/tx/${txHash}${
                     network === 'devnet' ? '?cluster=devnet' : ''
                   }`,
                 )
@@ -482,7 +490,7 @@ const MerchantPaymentScreen = ({ navigation, route }: Props) => {
               className="mt-3"
             >
               <Text className="text-purple-500 underline text-sm">
-                View on Solscan
+                View on Explorer
               </Text>
             </TouchableOpacity>
           </>
