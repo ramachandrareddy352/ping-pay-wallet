@@ -8,6 +8,10 @@
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
 	<string>PingPay</string>
+	<key>NSCameraUsageDescription</key>
+	<string>PingPay requires camera access to scan QR codes and complete payments.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>PingPay uses biometric authentication to securely authorize transactions.</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
