@@ -47,7 +47,7 @@ workflows:
     artifacts:
       - build/ipa/*.ipa
 
-    publishing:
-      app_store_connect:
-        apple_id: rcrtavanam@email.com
-        submit_to_testflight: true
+   publishing:
+    app_store_connect:
+      apple_id: rcrtavanam@email.com
+      submit_to_testflight: true
