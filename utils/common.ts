@@ -88,7 +88,7 @@ export const fetchSolBalance = async (pubkey: string, rpcUrl: string) => {
   try {
     const options = {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         jsonrpc: '2.0',
         id: 1,

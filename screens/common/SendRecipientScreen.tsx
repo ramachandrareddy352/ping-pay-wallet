@@ -25,7 +25,7 @@ import { AddressEntry } from '../../types/dataTypes';
 type Props = NativeStackScreenProps<RootStackParamList, 'SendRecipient'>;
 
 const BASE_IMAGE_URL =
-  'https://meapay-merchant.s3.ap-northeast-2.amazonaws.com';
+  'https://meapay-merchant-prod.s3.ap-northeast-2.amazonaws.com';
 
 const SendRecipientScreen = ({ navigation, route }: Props) => {
   const { mintAddress, isNFT } = route.params;
@@ -68,6 +68,7 @@ const SendRecipientScreen = ({ navigation, route }: Props) => {
       try {
         const json = JSON.parse(text);
         if (json.success === true && json.body) {
+          console.log(json.body);
           setIsMerchant(true);
           setMerchantDetails(json.body);
         }

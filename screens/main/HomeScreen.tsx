@@ -19,6 +19,7 @@ import Video from 'react-native-video';
 import Clipboard from '@react-native-clipboard/clipboard';
 import NetInfo from '@react-native-community/netinfo';
 import Toast from 'react-native-toast-message';
+import { SvgUri } from 'react-native-svg';
 
 import BuyIcon from '../../assets/icons/buy-icon.svg';
 import CopyIcon from '../../assets/icons/Copy-icon.svg';
@@ -52,6 +53,65 @@ import { Collectible, TokenBalance } from '../../types/dataTypes';
 import { useWallet } from '../../src/provider/Wallet';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
+
+export interface Token {
+  mint: string;
+  logoURI?: string;
+}
+
+interface TokenLogoProps {
+  token: Token;
+}
+const toNullableUri = (uri?: string): string | null => uri ?? null;
+const isSvg = (url?: string) =>
+  typeof url === 'string' && url.toLowerCase().endsWith('.svg');
+
+const TOKEN_SIZE = 40;
+
+export function TokenLogo({ token }: TokenLogoProps) {
+  const isNativeSol = token.mint === NATIVE_SOL_MINT;
+  const logoUri = token.logoURI;
+
+  // Fallback image logic
+  const fallbackImage = isNativeSol ? SolanaImage : SolImage;
+
+  // SVG handling
+  if (isSvg(logoUri)) {
+    return (
+      <View
+        style={{
+          width: TOKEN_SIZE,
+          height: TOKEN_SIZE,
+          borderRadius: TOKEN_SIZE / 2,
+          overflow: 'hidden',
+        }}
+        className="ml-4 mt-2"
+      >
+        <SvgUri
+          uri={toNullableUri(logoUri)}
+          width={TOKEN_SIZE}
+          height={TOKEN_SIZE}
+        />
+      </View>
+    );
+  }
+
+  // Normal image handling
+  return (
+    <Image
+      source={
+        logoUri ? (isNativeSol ? SolanaImage : { uri: logoUri }) : fallbackImage
+      }
+      style={{
+        width: TOKEN_SIZE,
+        height: TOKEN_SIZE,
+        borderRadius: TOKEN_SIZE / 2,
+      }}
+      className="ml-4 mt-2"
+      defaultSource={fallbackImage}
+    />
+  );
+}
 
 export default function HomeScreen({ navigation }: Props) {
   const [wallet, setWallet] = useState<WalletData | null>(null);
@@ -156,6 +216,7 @@ export default function HomeScreen({ navigation }: Props) {
 
     try {
       const { enrichedTokens, solUsd, splUsd } = await fetchBalances();
+      console.log(enrichedTokens);
 
       // Mecca mint setup
       const meccaMint =
@@ -925,19 +986,7 @@ export default function HomeScreen({ navigation }: Props) {
                       <View className="flex-row justify-between items-center px-2">
                         <View className="flex-row items-center gap-3">
                           {/* Token Image */}
-                          <Image
-                            source={
-                              token.logoURI
-                                ? token.mint === NATIVE_SOL_MINT
-                                  ? SolanaImage
-                                  : { uri: token.logoURI }
-                                : token.mint === NATIVE_SOL_MINT
-                                ? SolanaImage
-                                : SolImage
-                            }
-                            style={{ width: 40, height: 40, borderRadius: 100 }}
-                            defaultSource={SolImage}
-                          />
+                          <TokenLogo token={token} />
 
                           {/* Token Info */}
                           <View className="flex-col justify-center">
