@@ -2,12 +2,9 @@ workflows:
   ios-release:
     name: iOS Release Build
     max_build_duration: 120
-    instance_type: mac_mini_m1
+    instance_type: mac_mini_m2
 
     environment:
-      vars:
-        XCODE_SCHEME: "PingPay"
-        BUNDLE_ID: "com.pingpay.app"
       node: 18
 
     scripts:
@@ -19,6 +16,10 @@ workflows:
         script: |
           cd ios
           pod install
+
+      - name: Verify workspace
+        script: |
+          ls ios
 
       - name: Build IPA
         script: |
