@@ -19,6 +19,7 @@ workflows:
 
       - name: Verify workspace
         script: |
+          echo "Listing ios directory:"
           ls ios
 
       - name: Build IPA
