@@ -1,7 +1,7 @@
-import {Connection, PublicKey, LAMPORTS_PER_SOL} from '@solana/web3.js';
+import { Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 
-const RPC_MAINNET = 'https://api.mainnet-beta.solana.com';
-const RPC_DEVNET = 'https://api.devnet.solana.com';
+const RPC_MAINNET = 'https://rosemaria-weqok5-fast-mainnet.helius-rpc.com';
+const RPC_DEVNET = 'https://kirstyn-7fsg6s-fast-devnet.helius-rpc.com';
 
 export function getConnection(network: 'mainnet' | 'devnet') {
   return new Connection(network === 'mainnet' ? RPC_MAINNET : RPC_DEVNET);

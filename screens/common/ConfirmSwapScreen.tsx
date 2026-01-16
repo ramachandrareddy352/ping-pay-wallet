@@ -20,6 +20,7 @@ import {
   Transaction,
   SystemProgram,
   LAMPORTS_PER_SOL,
+  TransactionMessage,
 } from '@solana/web3.js';
 import NetInfo from '@react-native-community/netinfo';
 import BN from 'bn.js';
@@ -35,6 +36,7 @@ import {
   PoolFetchType,
   getPdaObservationId,
   PoolUtils,
+  CLMM_PROGRAM_ID,
 } from '@raydium-io/raydium-sdk-v2';
 import Clipboard from '@react-native-clipboard/clipboard';
 import { getRpcUrl, getSwapInfo } from '../../utils/common';
@@ -81,8 +83,8 @@ export default function ConfirmSwapScreen({ navigation, route }: Props) {
   );
   const [bestPool, setBestPool] = useState<any | null>(null);
   const [poolLoading, setPoolLoading] = useState(false);
-  const [computedAmount, setComputedAmount] = useState<BN>();
-  const [computedSupportAmount, setComputedSupportAmount] = useState<BN>();
+  const [computedAmount, setComputedAmount] = useState();
+  const [computedSupportAmount, setComputedSupportAmount] = useState();
   const [isComputing, setIsComputing] = useState(false);
   const [remainingAccountsData, setRemainingAccountsData] =
     useState<PublicKey[]>();
@@ -380,7 +382,7 @@ export default function ConfirmSwapScreen({ navigation, route }: Props) {
         const res = await raydium.api.fetchPoolByMints({
           mint1: sellMint,
           mint2: buyMint,
-          type: PoolFetchType.All,
+          type: PoolFetchType.Concentrated,
           sort: 'liquidity',
           order: 'desc',
           page: 1,
@@ -648,10 +650,17 @@ export default function ConfirmSwapScreen({ navigation, route }: Props) {
             }
 
             // Sign and send the transfer transaction
-            transferTx.partialSign(keypair);
-            const transferSignature = await connection.sendTransaction(
-              transferTx,
-              [keypair],
+            const message = new TransactionMessage({
+              payerKey: ownerPubkey,
+              recentBlockhash: transferBlockhash,
+              instructions: transferTx.instructions,
+            }).compileToV0Message();
+
+            const v0Tx = new VersionedTransaction(message);
+            v0Tx.sign([keypair]);
+
+            const transferSignature = await connection.sendRawTransaction(
+              v0Tx.serialize(),
               {
                 skipPreflight: false,
                 preflightCommitment: 'confirmed',

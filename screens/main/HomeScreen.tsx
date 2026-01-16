@@ -62,21 +62,91 @@ export interface Token {
 interface TokenLogoProps {
   token: Token;
 }
-const toNullableUri = (uri?: string): string | null => uri ?? null;
-const isSvg = (url?: string) =>
-  typeof url === 'string' && url.toLowerCase().endsWith('.svg');
+
+function isIpfsUri(uri?: string): boolean {
+  return typeof uri === 'string' && uri.includes('/ipfs/');
+}
 
 const TOKEN_SIZE = 40;
+const GATEWAYS = [
+  'ipfs.io',
+  'cloudflare-ipfs.com',
+  'dweb.link',
+  'gateway.pinata.cloud', // Add more if needed; some may require auth
+];
 
 export function TokenLogo({ token }: TokenLogoProps) {
   const isNativeSol = token.mint === NATIVE_SOL_MINT;
-  const logoUri = token.logoURI;
+  const rawUri = token.logoURI;
 
-  // Fallback image logic
   const fallbackImage = isNativeSol ? SolanaImage : SolImage;
 
-  // SVG handling
-  if (isSvg(logoUri)) {
+  const [currentUri, setCurrentUri] = useState(rawUri || '');
+  const [isSvgType, setIsSvgType] = useState(false);
+  const [gatewayIndex, setGatewayIndex] = useState(0);
+
+  useEffect(() => {
+    if (!rawUri) return;
+
+    const determineTypeAndUri = async () => {
+      let uriToCheck = rawUri;
+      if (isIpfsUri(rawUri)) {
+        // Extract hash from e.g., https://ipfs.io/ipfs/Qm...
+        const hashMatch = rawUri.match(/\/ipfs\/(Qm[1-9A-HJ-NP-Za-km-z]{44})/);
+        const hash = hashMatch ? hashMatch[1] : '';
+        if (hash) {
+          uriToCheck = `https://${GATEWAYS[0]}/ipfs/${hash}`;
+        }
+      }
+
+      try {
+        const response = await fetch(uriToCheck, { method: 'HEAD' });
+        const contentType =
+          response.headers.get('Content-Type')?.toLowerCase() || '';
+        setIsSvgType(
+          contentType.includes('svg') || rawUri.toLowerCase().endsWith('.svg'),
+        );
+        setCurrentUri(uriToCheck);
+      } catch (error) {
+        console.log('Failed to fetch content type:', error);
+        // Fallback to assuming non-SVG
+        setIsSvgType(rawUri.toLowerCase().endsWith('.svg'));
+        setCurrentUri(uriToCheck);
+      }
+    };
+
+    determineTypeAndUri();
+  }, [rawUri]);
+
+  const handleError = () => {
+    console.log('Failed to load token image:', currentUri);
+    if (isIpfsUri(rawUri) && gatewayIndex < GATEWAYS.length - 1 && rawUri) {
+      const nextIndex = gatewayIndex + 1;
+      const hashMatch = rawUri.match(/\/ipfs\/(Qm[1-9A-HJ-NP-Za-km-z]{44})/);
+      const hash = hashMatch ? hashMatch[1] : '';
+      if (hash) {
+        const nextUri = `https://${GATEWAYS[nextIndex]}/ipfs/${hash}`;
+        setCurrentUri(nextUri);
+        setGatewayIndex(nextIndex);
+      }
+    }
+  };
+
+  if (!currentUri) {
+    return (
+      <Image
+        source={fallbackImage}
+        style={{
+          width: TOKEN_SIZE,
+          height: TOKEN_SIZE,
+          borderRadius: TOKEN_SIZE / 2,
+        }}
+        className="ml-4 mt-2"
+      />
+    );
+  }
+
+  if (isSvgType) {
     return (
       <View
         style={{
@@ -88,20 +158,18 @@ export function TokenLogo({ token }: TokenLogoProps) {
         className="ml-4 mt-2"
       >
         <SvgUri
-          uri={toNullableUri(logoUri)}
+          uri={currentUri}
           width={TOKEN_SIZE}
           height={TOKEN_SIZE}
+          onError={handleError}
         />
       </View>
     );
   }
 
-  // Normal image handling
   return (
     <Image
-      source={
-        logoUri ? (isNativeSol ? SolanaImage : { uri: logoUri }) : fallbackImage
-      }
+      source={{ uri: currentUri }}
       style={{
         width: TOKEN_SIZE,
         height: TOKEN_SIZE,
@@ -109,6 +177,7 @@ export function TokenLogo({ token }: TokenLogoProps) {
       }}
       className="ml-4 mt-2"
       defaultSource={fallbackImage}
+      onError={handleError}
     />
   );
 }
@@ -216,7 +285,7 @@ export default function HomeScreen({ navigation }: Props) {
 
     try {
       const { enrichedTokens, solUsd, splUsd } = await fetchBalances();
-      console.log(enrichedTokens);
+      // console.log(enrichedTokens);
 
       // Mecca mint setup
       const meccaMint =
