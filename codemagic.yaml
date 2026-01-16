@@ -20,7 +20,7 @@ workflows:
 
       - name: Create exportOptions.plist
         script: |
-          cat <<EOF > export_options.plist
+          cat <<EOF > exportOptions.plist
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
            "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -28,14 +28,15 @@ workflows:
           <dict>
             <key>method</key>
             <string>app-store</string>
-            <key>uploadBitcode</key>
-            <false/>
-            <key>uploadSymbols</key>
-            <true/>
-            <key>compileBitcode</key>
-            <false/>
+
             <key>signingStyle</key>
             <string>automatic</string>
+
+            <key>uploadSymbols</key>
+            <true/>
+
+            <key>compileBitcode</key>
+            <false/>
           </dict>
           </plist>
           EOF
@@ -45,7 +46,8 @@ workflows:
           xcode-project build-ipa \
             --workspace "ios/PingPay.xcworkspace" \
             --scheme "PingPay" \
-            --export-options-plist export_options.plist
+            --export-options-plist exportOptions.plist \
+            --code-signing-style automatic
 
     artifacts:
       - build/ios/ipa/*.ipa
