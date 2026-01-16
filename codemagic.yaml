@@ -46,8 +46,7 @@ workflows:
           xcode-project build-ipa \
             --workspace "ios/PingPay.xcworkspace" \
             --scheme "PingPay" \
-            --export-options-plist exportOptions.plist \
-            --code-signing-style automatic
+            --export-options-plist exportOptions.plist
 
     artifacts:
       - build/ios/ipa/*.ipa
