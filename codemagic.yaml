@@ -43,7 +43,7 @@ workflows:
       - name: Build IPA
         script: |
           xcode-project build-ipa \
-            --workspace "ios/PingPay.xcworkspace" \
+            --workspace "ios/PingPay.xcodeproj" \
             --scheme "PingPay" \
             --export-options-plist export_options.plist
 
