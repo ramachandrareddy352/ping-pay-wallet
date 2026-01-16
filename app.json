@@ -1,5 +1,20 @@
 {
-  "name": "Ping Pay",
-  "displayName": "Ping Pay",
-  "packageName": "ping_pay"
+  "expo": {
+    "name": "Ping Pay",
+    "slug": "ping-pay",
+    "owner": "mcret",
+    "ios": {
+      "bundleIdentifier": "com.pingpay.wallet",
+      "buildNumber": "1"
+    },
+    "android": {
+      "package": "com.pingpay.wallet",
+      "versionCode": 10
+    },
+    "extra": {
+      "eas": {
+        "projectId": "d43a5c90-140b-425d-ad31-57d3b91d6ace"
+      }
+    }
+  }
 }
