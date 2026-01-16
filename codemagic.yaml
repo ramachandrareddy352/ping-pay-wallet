@@ -16,17 +16,36 @@ workflows:
         script: |
           cd ios
           pod install
+          cd ..
 
-      - name: Verify workspace
+      - name: Create exportOptions.plist
         script: |
-          echo "Listing ios directory:"
-          ls ios
+          cat <<EOF > export_options.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+           "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store</string>
+            <key>uploadBitcode</key>
+            <false/>
+            <key>uploadSymbols</key>
+            <true/>
+            <key>compileBitcode</key>
+            <false/>
+            <key>signingStyle</key>
+            <string>automatic</string>
+          </dict>
+          </plist>
+          EOF
 
       - name: Build IPA
         script: |
           xcode-project build-ipa \
             --workspace "ios/PingPay.xcworkspace" \
-            --scheme "PingPay"
+            --scheme "PingPay" \
+            --export-options-plist export_options.plist
 
     artifacts:
       - build/ios/ipa/*.ipa
