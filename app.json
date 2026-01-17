@@ -4,12 +4,12 @@
     "slug": "ping-pay",
     "owner": "mcret",
     "ios": {
-      "bundleIdentifier": "com.pingpay.wallet",
+      "bundleIdentifier": "com.ping_pay.wallet",
       "buildNumber": "1"
     },
     "android": {
-      "package": "com.pingpay.wallet",
-      "versionCode": 10
+      "package": "com.ping_pay.wallet",
+      "versionCode": 11
     },
     "extra": {
       "eas": {

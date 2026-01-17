@@ -1,4 +1,4 @@
-package com.pingpay.wallet
+package com.ping_pay.wallet
 
 import android.os.Build
 import android.os.Bundle
