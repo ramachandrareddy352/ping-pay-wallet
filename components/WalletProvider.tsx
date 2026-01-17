@@ -5,9 +5,9 @@ import React, {
   useEffect,
   useState,
 } from 'react';
-import {Connection, Keypair} from '@solana/web3.js';
+import { Connection, Keypair } from '@solana/web3.js';
 import bs58 from 'bs58';
-import {loadWallet, WalletData, WalletAccount} from '../utils/storage';
+import { loadWallet, WalletData, WalletAccount } from '../utils/storage';
 
 export interface WalletContextData {
   wallet: Keypair | null;
@@ -16,7 +16,9 @@ export interface WalletContextData {
 
 const WalletContext = createContext<WalletContextData>({
   wallet: null,
-  connection: new Connection('https://api.devnet.solana.com'),
+  connection: new Connection(
+    'https://kirstyn-7fsg6s-fast-devnet.helius-rpc.com',
+  ),
 });
 
 export const useWallet = () => useContext(WalletContext);
@@ -25,10 +27,10 @@ export interface WalletProviderProps {
   children: ReactNode;
 }
 
-export function WalletProvider({children}: WalletProviderProps) {
+export function WalletProvider({ children }: WalletProviderProps) {
   const [wallet, setWallet] = useState<Keypair | null>(null);
   const [connection, setConnection] = useState<Connection>(
-    new Connection('https://api.devnet.solana.com'),
+    new Connection('https://kirstyn-7fsg6s-fast-devnet.helius-rpc.com'),
   );
 
   const initWallet = async () => {
@@ -50,8 +52,8 @@ export function WalletProvider({children}: WalletProviderProps) {
       // Set connection based on stored network
       const rpcUrl =
         data.network === 'mainnet-beta'
-          ? 'https://api.mainnet-beta.solana.com'
-          : 'https://api.devnet.solana.com';
+          ? 'https://rosemaria-weqok5-fast-mainnet.helius-rpc.com'
+          : 'https://kirstyn-7fsg6s-fast-devnet.helius-rpc.com';
       setConnection(new Connection(rpcUrl, 'confirmed'));
     } catch (e) {
       console.log('Error initializing wallet:', e);

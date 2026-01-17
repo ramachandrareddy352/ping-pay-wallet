@@ -1250,14 +1250,29 @@ export default function SwapTokenScreen({ navigation }: Props) {
                 network,
               });
             }}
-            disabled={disableSwap || !bestPool}
+            disabled={
+              disableSwap ||
+              !bestPool ||
+              Number(sellAmount) === 0 ||
+              Number(buyAmount) === 0
+            }
             className={`items-center justify-center py-4 rounded-2xl mt-2 mb-6 ${
-              disableSwap || !bestPool ? 'bg-[#18181f]' : 'bg-[#9707B5]'
+              disableSwap ||
+              !bestPool ||
+              Number(sellAmount) === 0 ||
+              Number(buyAmount) === 0
+                ? 'bg-[#18181f]'
+                : 'bg-[#9707B5]'
             }`}
           >
             <Text
               className={`font-semibold ${
-                disableSwap || !bestPool ? 'text-gray-500' : 'text-white'
+                disableSwap ||
+                !bestPool ||
+                Number(sellAmount) === 0 ||
+                Number(buyAmount) === 0
+                  ? 'text-gray-500'
+                  : 'text-white'
               }`}
             >
               Swap

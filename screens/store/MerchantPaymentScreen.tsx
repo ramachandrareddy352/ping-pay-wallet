@@ -41,7 +41,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'MerchantPayment'>;
 const MAINNET_MEA_MINT = 'mecySk7eSawDNfAXvW3CquhLyxyKaXExFXgUUbEZE1T';
 const DEVNET_MEA_MINT = 'DUbbqANBKJqAUCJveSEFgVPGHDwkdc6d9UiQyxBLcyN3';
 const BASE_IMAGE_URL =
-  'https://meapay-merchant.s3.ap-northeast-2.amazonaws.com';
+  'https://meapay-merchant-prod.s3.ap-northeast-2.amazonaws.com';
 
 // Local screenshot path (you uploaded earlier in the session)
 const LOCAL_SCREENSHOT_PATH = '/mnt/data/Screenshot 2025-11-21 172622.png';

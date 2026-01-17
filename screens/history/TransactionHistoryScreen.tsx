@@ -188,8 +188,8 @@ export default function SolanaHistoryScreen({ navigation }: Props) {
       setListLoading(true);
       const connection = new Connection(
         wallet?.network === 'devnet'
-          ? 'https://api.devnet.solana.com'
-          : 'https://api.mainnet-beta.solana.com',
+          ? 'https://kirstyn-7fsg6s-fast-devnet.helius-rpc.com'
+          : 'https://rosemaria-weqok5-fast-mainnet.helius-rpc.com',
       );
       const address = new PublicKey(account.publicKey);
 
