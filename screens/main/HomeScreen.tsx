@@ -8,7 +8,6 @@ import {
   Image,
   Alert,
   ActivityIndicator,
-  StyleSheet,
   Linking,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
@@ -50,7 +49,6 @@ import { fetchNFT } from '../../utils/fetch_nft';
 import { RootStackParamList } from '../../types/navigation';
 import BottomNavBar from '../../components/BottomNavBar';
 import { Collectible, TokenBalance } from '../../types/dataTypes';
-import { useWallet } from '../../src/provider/Wallet';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
@@ -218,8 +216,6 @@ export default function HomeScreen({ navigation }: Props) {
     return () => unsubscribe();
   }, []);
 
-  const web3Wallet = useWallet();
-
   const handleCurrentAccount = async () => {
     const w = await loadWallet();
     if (!w) {
@@ -294,32 +290,42 @@ export default function HomeScreen({ navigation }: Props) {
           : 'mecySk7eSawDNfAXvW3CquhLyxyKaXExFXgUUbEZE1T';
       const cluster = wallet.network === 'devnet' ? 'devnet' : 'mainnet-beta';
       let meccaToken = enrichedTokens.find(t => t.mint === meccaMint);
-      if (!meccaToken) {
-        const metadata = await fetchTokenMetadata(meccaMint, cluster);
-        if (metadata) {
-          meccaToken = {
-            mint: meccaMint,
-            amount: 0,
-            decimals: metadata.decimals,
-            name: metadata.name,
-            symbol: metadata.symbol,
-            logoURI: metadata.image_uri,
-            price: metadata.price_per_token,
-            usd: 0,
-          };
-        } else {
-          meccaToken = {
-            mint: meccaMint,
-            amount: 0,
-            decimals: 6,
-            name: 'Mecca',
-            symbol: 'MEA',
-            logoURI:
-              'https://raw.githubusercontent.com/mcret2024/tokendata/master/assets/images/mecca.png',
-            price: 0,
-            usd: 0,
-          };
+
+      const metadata = await fetchTokenMetadata(meccaMint, cluster);
+      let meccaPrice = metadata?.price_per_token;
+      if (metadata?.price_per_token === 0) {
+        const url = `https://api.coingecko.com/api/v3/coins/solana/contract/${meccaMint}`;
+        const response = await fetch(url);
+        if (!response.ok) return null;
+        const data = await response.json();
+        if (data?.id && data.market_data?.current_price?.usd) {
+          meccaPrice = data.market_data.current_price.usd;
         }
+      }
+
+      if (metadata) {
+        meccaToken = {
+          mint: meccaMint,
+          amount: enrichedTokens.find(t => t.mint === meccaMint)?.amount || 0,
+          decimals: metadata.decimals,
+          name: metadata.name,
+          symbol: metadata.symbol,
+          logoURI: metadata.image_uri,
+          price: meccaPrice,
+          usd: 0,
+        };
+      } else {
+        meccaToken = {
+          mint: meccaMint,
+          amount: enrichedTokens.find(t => t.mint === meccaMint)?.amount || 0,
+          decimals: 6,
+          name: 'Mecca',
+          symbol: 'MEA',
+          logoURI:
+            'https://raw.githubusercontent.com/mcret2024/tokendata/master/assets/images/mecca.png',
+          price: meccaPrice,
+          usd: 0,
+        };
       }
 
       // Merge with existing tokenBalances
