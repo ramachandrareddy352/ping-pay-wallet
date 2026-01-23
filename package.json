@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@metaplex-foundation/mpl-bubblegum": "^5.0.2",
+    "@metaplex-foundation/mpl-token-metadata": "^3.4.0",
     "@raydium-io/raydium-sdk-v2": "^0.2.30-alpha",
     "@react-native-camera-roll/camera-roll": "^7.10.2",
     "@react-native-clipboard/clipboard": "^1.16.3",

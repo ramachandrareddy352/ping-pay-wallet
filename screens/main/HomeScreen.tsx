@@ -188,6 +188,7 @@ export default function HomeScreen({ navigation }: Props) {
   const [tokenBalances, setTokenBalances] = useState<TokenBalance[]>([]);
   const [collectibles, setCollectibles] = useState<Collectible[]>([]);
   const [totalUsd, setTotalUsd] = useState(0);
+  const [meaPrice, setMeaPrice] = useState(0);
   const [listLoading, setListLoading] = useState(true);
   const [isAirdrop, setIsAirdrop] = useState(false);
   const [activeTab, setActiveTab] = useState<'tokens' | 'collectibles'>(
@@ -292,14 +293,34 @@ export default function HomeScreen({ navigation }: Props) {
       let meccaToken = enrichedTokens.find(t => t.mint === meccaMint);
 
       const metadata = await fetchTokenMetadata(meccaMint, cluster);
-      let meccaPrice = metadata?.price_per_token;
-      if (metadata?.price_per_token === 0) {
-        const url = `https://api.coingecko.com/api/v3/coins/solana/contract/${meccaMint}`;
-        const response = await fetch(url);
-        if (!response.ok) return null;
-        const data = await response.json();
-        if (data?.id && data.market_data?.current_price?.usd) {
-          meccaPrice = data.market_data.current_price.usd;
+      let meccaPrice = meaPrice || 0; // fallback to cached price first
+
+      // 1. Use Helius price if valid
+      if (metadata?.price_per_token && metadata.price_per_token > 0) {
+        meccaPrice = metadata.price_per_token;
+        setMeaPrice(metadata.price_per_token);
+      }
+      // 2. Fallback to CoinGecko ONLY if Helius price is 0
+      else {
+        if (meaPrice === 0) {
+          try {
+            const url = `https://api.coingecko.com/api/v3/coins/solana/contract/${meccaMint}`;
+            const response = await fetch(url);
+
+            if (response.ok) {
+              const data = await response.json();
+              const cgPrice = data?.market_data?.current_price?.usd;
+
+              if (cgPrice && cgPrice > 0) {
+                meccaPrice = cgPrice;
+                setMeaPrice(cgPrice);
+              }
+            }
+            // ❗ DO NOTHING on rate-limit → keep old price
+          } catch (e) {
+            // ❗ Network error → keep old price
+            console.log('CoinGecko fallback failed, using cached MEA price');
+          }
         }
       }
 
