@@ -117,7 +117,6 @@ export function TokenLogo({ token }: TokenLogoProps) {
   }, [rawUri]);
 
   const handleError = () => {
-    console.log('Failed to load token image:', currentUri);
     if (isIpfsUri(rawUri) && gatewayIndex < GATEWAYS.length - 1 && rawUri) {
       const nextIndex = gatewayIndex + 1;
       const hashMatch = rawUri.match(/\/ipfs\/(Qm[1-9A-HJ-NP-Za-km-z]{44})/);
@@ -179,6 +178,8 @@ export function TokenLogo({ token }: TokenLogoProps) {
     />
   );
 }
+
+const COINGECKO_API_KEY = 'CG-gGZzBokLfpa3g9ihhhKUNine';
 
 export default function HomeScreen({ navigation }: Props) {
   const [wallet, setWallet] = useState<WalletData | null>(null);
@@ -281,7 +282,7 @@ export default function HomeScreen({ navigation }: Props) {
     if (!currentAccount || !wallet || !isConnected) return;
 
     try {
-      const { enrichedTokens, solUsd, splUsd } = await fetchBalances();
+      const { enrichedTokens } = await fetchBalances();
       // console.log(enrichedTokens);
 
       // Mecca mint setup
@@ -304,8 +305,12 @@ export default function HomeScreen({ navigation }: Props) {
       else {
         if (meaPrice === 0) {
           try {
-            const url = `https://api.coingecko.com/api/v3/coins/solana/contract/${meccaMint}`;
-            const response = await fetch(url);
+            const url = `https://pro-api.coingecko.com/api/v3/coins/solana/contract/${meccaMint}`;
+            const response = await fetch(url, {
+              headers: {
+                'x-cg-pro-api-key': COINGECKO_API_KEY,
+              },
+            });
 
             if (response.ok) {
               const data = await response.json();
@@ -333,7 +338,9 @@ export default function HomeScreen({ navigation }: Props) {
           symbol: metadata.symbol,
           logoURI: metadata.image_uri,
           price: meccaPrice,
-          usd: 0,
+          usd:
+            (enrichedTokens.find(t => t.mint === meccaMint)?.amount || 0) *
+            meccaPrice,
         };
       } else {
         meccaToken = {
@@ -345,7 +352,9 @@ export default function HomeScreen({ navigation }: Props) {
           logoURI:
             'https://raw.githubusercontent.com/mcret2024/tokendata/master/assets/images/mecca.png',
           price: meccaPrice,
-          usd: 0,
+          usd:
+            (enrichedTokens.find(t => t.mint === meccaMint)?.amount || 0) *
+            meccaPrice,
         };
       }
 
@@ -459,7 +468,10 @@ export default function HomeScreen({ navigation }: Props) {
       sortedTokens.push(...bookmarkedTokens, ...otherTokens);
 
       // Calculate totalUsd
-      newTotalUsd = sortedTokens.reduce((sum, t) => sum + (t.usd || 0), 0);
+      newTotalUsd = sortedTokens.reduce(
+        (sum, token) => sum + (token.usd ?? 0),
+        0,
+      );
 
       setTokenBalances(sortedTokens);
       setTotalUsd(newTotalUsd);

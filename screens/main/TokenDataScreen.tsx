@@ -31,6 +31,8 @@ import IncreaseIcon from '../../assets/icons/increase-icon.svg';
 import DecreaseIcon from '../../assets/icons/decrease-icon.svg';
 import OpenLink from '../../assets/icons/open-link.svg';
 import Offline from '../../assets/icons/offline.svg';
+import SolImage from '../../assets/images/sol-img.png';
+import SolanaImage from '../../assets/images/solana-icon.png';
 
 import { loadWallet, WalletData, saveWallet } from '../../utils/storage';
 import { fetchCoinGeckoData, fetchTokenMetadata } from '../../utils/fetch_spl';
@@ -38,11 +40,139 @@ import { NATIVE_SOL_MINT, SOL_MINT_ADDRESS } from '../../utils/common';
 import { RootStackParamList } from '../../types/navigation';
 import { Metadata } from '../../types/dataTypes';
 import BottomNavBar from '../../components/BottomNavBar';
+import { SvgUri } from 'react-native-svg';
 
 const { width } = Dimensions.get('window');
 
 type TimeRange = '1D' | '1W' | '1M' | '3M' | '1Y';
 type Props = NativeStackScreenProps<RootStackParamList, 'TokenData'>;
+
+export interface Token {
+  mint: string;
+  logoURI?: string;
+}
+
+interface TokenLogoProps {
+  token: Token;
+}
+
+function isIpfsUri(uri?: string): boolean {
+  return typeof uri === 'string' && uri.includes('/ipfs/');
+}
+
+const TOKEN_SIZE = 40;
+const GATEWAYS = [
+  'ipfs.io',
+  'cloudflare-ipfs.com',
+  'dweb.link',
+  'gateway.pinata.cloud', // Add more if needed; some may require auth
+];
+
+export function TokenLogo({ token }: TokenLogoProps) {
+  const isNativeSol = token.mint === NATIVE_SOL_MINT;
+  const rawUri = token.logoURI;
+
+  const fallbackImage = isNativeSol ? SolanaImage : SolImage;
+
+  const [currentUri, setCurrentUri] = useState(rawUri || '');
+  const [isSvgType, setIsSvgType] = useState(false);
+  const [gatewayIndex, setGatewayIndex] = useState(0);
+
+  useEffect(() => {
+    if (!rawUri) return;
+
+    const determineTypeAndUri = async () => {
+      let uriToCheck = rawUri;
+      if (isIpfsUri(rawUri)) {
+        // Extract hash from e.g., https://ipfs.io/ipfs/Qm...
+        const hashMatch = rawUri.match(/\/ipfs\/(Qm[1-9A-HJ-NP-Za-km-z]{44})/);
+        const hash = hashMatch ? hashMatch[1] : '';
+        if (hash) {
+          uriToCheck = `https://${GATEWAYS[0]}/ipfs/${hash}`;
+        }
+      }
+
+      try {
+        const response = await fetch(uriToCheck, { method: 'HEAD' });
+        const contentType =
+          response.headers.get('Content-Type')?.toLowerCase() || '';
+        setIsSvgType(
+          contentType.includes('svg') || rawUri.toLowerCase().endsWith('.svg'),
+        );
+        setCurrentUri(uriToCheck);
+      } catch (error) {
+        console.log('Failed to fetch content type:', error);
+        // Fallback to assuming non-SVG
+        setIsSvgType(rawUri.toLowerCase().endsWith('.svg'));
+        setCurrentUri(uriToCheck);
+      }
+    };
+
+    determineTypeAndUri();
+  }, [rawUri]);
+
+  const handleError = () => {
+    if (isIpfsUri(rawUri) && gatewayIndex < GATEWAYS.length - 1 && rawUri) {
+      const nextIndex = gatewayIndex + 1;
+      const hashMatch = rawUri.match(/\/ipfs\/(Qm[1-9A-HJ-NP-Za-km-z]{44})/);
+      const hash = hashMatch ? hashMatch[1] : '';
+      if (hash) {
+        const nextUri = `https://${GATEWAYS[nextIndex]}/ipfs/${hash}`;
+        setCurrentUri(nextUri);
+        setGatewayIndex(nextIndex);
+      }
+    }
+  };
+
+  if (!currentUri) {
+    return (
+      <Image
+        source={fallbackImage}
+        style={{
+          width: TOKEN_SIZE,
+          height: TOKEN_SIZE,
+          borderRadius: TOKEN_SIZE / 2,
+        }}
+        className="ml-4 mt-2"
+      />
+    );
+  }
+
+  if (isSvgType) {
+    return (
+      <View
+        style={{
+          width: TOKEN_SIZE,
+          height: TOKEN_SIZE,
+          borderRadius: TOKEN_SIZE / 2,
+          overflow: 'hidden',
+        }}
+        className="ml-4 mt-2"
+      >
+        <SvgUri
+          uri={currentUri}
+          width={TOKEN_SIZE}
+          height={TOKEN_SIZE}
+          onError={handleError}
+        />
+      </View>
+    );
+  }
+
+  return (
+    <Image
+      source={{ uri: currentUri }}
+      style={{
+        width: TOKEN_SIZE,
+        height: TOKEN_SIZE,
+        borderRadius: TOKEN_SIZE / 2,
+      }}
+      className="ml-4 mt-2"
+      defaultSource={fallbackImage}
+      onError={handleError}
+    />
+  );
+}
 
 export default function TokenDataScreen({ route, navigation }: Props) {
   const { mintAddress } = route.params;
@@ -125,8 +255,12 @@ export default function TokenDataScreen({ route, navigation }: Props) {
     }
 
     try {
-      const url = `https://api.coingecko.com/api/v3/coins/solana/contract/${mint}`;
-      const response = await fetch(url);
+      const url = `https://pro-api.coingecko.com/api/v3/coins/solana/contract/${mint}`;
+      const response = await fetch(url, {
+        headers: {
+          'x-cg-pro-api-key': 'CG-gGZzBokLfpa3g9ihhhKUNine',
+        },
+      });
       if (!response.ok) return null;
       const data = await response.json();
       if (data?.id && data.market_data?.current_price?.usd) {
@@ -323,13 +457,11 @@ export default function TokenDataScreen({ route, navigation }: Props) {
         {/* Token Info */}
         <View className="px-4 flex-row justify-between items-center">
           <View className="flex-row items-center flex-1">
-            <Image
-              source={
-                metadata?.image_uri?.startsWith('http')
-                  ? { uri: metadata.image_uri }
-                  : require('../../assets/images/Solona-1.png')
-              }
-              className="w-12 h-12 rounded-full"
+            <TokenLogo
+              token={{
+                mint: mintAddress,
+                logoURI: metadata?.image_uri,
+              }}
             />
             <View className="ml-4">
               <Text className="text-white text-base font-semibold">

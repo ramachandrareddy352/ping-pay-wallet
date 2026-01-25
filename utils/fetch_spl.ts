@@ -1,7 +1,7 @@
 import axios from 'axios';
 import Toast from 'react-native-toast-message';
-import {getRpcUrl} from './common';
-import {Metadata, TokenBalance} from '../types/dataTypes';
+import { getRpcUrl } from './common';
+import { Metadata, TokenBalance } from '../types/dataTypes';
 
 export const fetchTokenMetadata = async (
   mint: string,
@@ -11,7 +11,7 @@ export const fetchTokenMetadata = async (
   try {
     const response = await fetch(rpcUrl, {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         jsonrpc: '2.0',
         id: 'getAsset',
@@ -69,7 +69,11 @@ export const fetchTokenMetadata = async (
 export const fetchCoinGeckoData = async (coingeckoId: string, days: number) => {
   try {
     const response = await axios.get(
-      `https://api.coingecko.com/api/v3/coins/${coingeckoId}/market_chart?vs_currency=usd&days=${days}`,
+      `https://pro-api.coingecko.com/api/v3/coins/${coingeckoId}/market_chart?vs_currency=usd&days=${days}`, {
+      headers: {
+        'x-cg-pro-api-key': 'CG-gGZzBokLfpa3g9ihhhKUNine',
+      },
+    }
     );
     return response.data;
   } catch (error) {
@@ -116,7 +120,7 @@ export const fetchSPL = async (rpcUrl: string, ownerAddress: string) => {
       break;
     }
 
-    const {result} = await response.json();
+    const { result } = await response.json();
     if (!result?.items || result.items.length === 0) {
       break;
     }
@@ -156,5 +160,5 @@ export const fetchSPL = async (rpcUrl: string, ownerAddress: string) => {
     total_usd += user_balance * price;
   }
 
-  return {items: tempSPL, total_usd};
+  return { items: tempSPL, total_usd };
 };
