@@ -338,6 +338,7 @@ export default function TokenDataScreen({ route, navigation }: Props) {
         '1Y': 365,
       }[timeRange];
       const data = await fetchCoinGeckoData(coingeckoId, days);
+      // console.log(data);
       if (data && data.prices?.length > 0) {
         const priceValues = data.prices.map((p: [number, number]) => p[1]);
         const minPrice = Math.min(...priceValues);

@@ -87,7 +87,7 @@ const settingsOptions = [
   },
   {
     title: 'About',
-    description: 'Learn more about this app',
+    description: 'Current App Version: v1.0.4',
     icon: InfoIcon,
     navigateTo: 'Home',
   },

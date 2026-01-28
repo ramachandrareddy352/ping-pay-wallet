@@ -295,6 +295,7 @@ export default function HomeScreen({ navigation }: Props) {
 
       const metadata = await fetchTokenMetadata(meccaMint, cluster);
       let meccaPrice = meaPrice || 0; // fallback to cached price first
+      // console.log(meccaPrice);
 
       // 1. Use Helius price if valid
       if (metadata?.price_per_token && metadata.price_per_token > 0) {
@@ -303,7 +304,7 @@ export default function HomeScreen({ navigation }: Props) {
       }
       // 2. Fallback to CoinGecko ONLY if Helius price is 0
       else {
-        if (meaPrice === 0) {
+        if (meaPrice === 0 || true) {
           try {
             const url = `https://pro-api.coingecko.com/api/v3/coins/solana/contract/${meccaMint}`;
             const response = await fetch(url, {
@@ -311,10 +312,12 @@ export default function HomeScreen({ navigation }: Props) {
                 'x-cg-pro-api-key': COINGECKO_API_KEY,
               },
             });
+            // console.log(response);
 
             if (response.ok) {
               const data = await response.json();
               const cgPrice = data?.market_data?.current_price?.usd;
+              // console.log(cgPrice);
 
               if (cgPrice && cgPrice > 0) {
                 meccaPrice = cgPrice;
@@ -953,7 +956,7 @@ export default function HomeScreen({ navigation }: Props) {
             {/* Buy */}
             <TouchableOpacity
               onPress={() =>
-                Linking.openURL('https://www.binance.com/en-IN/crypto/buy/')
+                Linking.openURL('https://bingx.com/en/spot/MEAUSDT')
               }
               className="items-center active:scale-95"
             >

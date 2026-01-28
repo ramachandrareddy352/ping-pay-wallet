@@ -69,12 +69,14 @@ export const fetchTokenMetadata = async (
 export const fetchCoinGeckoData = async (coingeckoId: string, days: number) => {
   try {
     const response = await axios.get(
-      `https://pro-api.coingecko.com/api/v3/coins/${coingeckoId}/market_chart?vs_currency=usd&days=${days}`, {
-      headers: {
-        'x-cg-pro-api-key': 'CG-gGZzBokLfpa3g9ihhhKUNine',
+      `https://pro-api.coingecko.com/api/v3/coins/${coingeckoId}/market_chart?vs_currency=usd&days=${days}`,
+      {
+        headers: {
+          'x-cg-pro-api-key': 'CG-gGZzBokLfpa3g9ihhhKUNine',
+        },
       },
-    }
     );
+    // console.log(response);
     return response.data;
   } catch (error) {
     console.log('Error fetching CoinGecko data:', error);

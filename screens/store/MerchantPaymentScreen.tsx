@@ -100,7 +100,12 @@ const MerchantPaymentScreen = ({ navigation, route }: Props) => {
       try {
         setLoadingPrice(true);
         const cgRes = await fetch(
-          'https://api.coingecko.com/api/v3/simple/price?ids=mecca&vs_currencies=usd',
+          'https://pro-api.coingecko.com/api/v3/simple/price?ids=mecca&vs_currencies=usd',
+          {
+            headers: {
+              'x-cg-pro-api-key': 'CG-gGZzBokLfpa3g9ihhhKUNine',
+            },
+          },
         );
         const cgData = await cgRes.json();
         if (cgData.mecca?.usd) {

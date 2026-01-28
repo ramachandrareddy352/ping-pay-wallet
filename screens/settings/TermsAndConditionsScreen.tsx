@@ -31,7 +31,7 @@ export default function TermsAndConditionsScreen(): JSX.Element {
             Terms & Conditions
           </Text>
           <Text className="text-[#CCCCCC] text-xs mt-1">
-            Ping Pay — Version 1.0.2
+            Ping Pay — Version 1.0.4
           </Text>
         </View>
       </View>
